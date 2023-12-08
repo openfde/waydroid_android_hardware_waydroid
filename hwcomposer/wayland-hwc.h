@@ -78,6 +78,7 @@ enum {
     GRALLOC_ANDROID,
     GRALLOC_GBM,
     GRALLOC_CROS,
+    GRALLOC_X100,
     GRALLOC_DEFAULT
 };
 
@@ -182,6 +183,29 @@ struct buffer {
     void *shm_data;
     int size;
 };
+
+typedef struct 
+{
+	native_handle_t base;
+	int fd[3];
+	uint64_t ui64SUnknown;
+	int uUnknown;
+	int iWidth;
+	int iHeight;
+	int iFormat;
+	unsigned int uiBUnknown;
+	int iPUnknown;
+	int aiSUnknown[3];
+	int aiVSUnknown[3];
+	uint64_t aulUnknownO[3];
+	unsigned int auiMUnknownU[3];
+	unsigned int auiNumUnknownVCs[3];
+	unsigned int auiNumPUnknownPCs[3];
+	int iNumSUnknownAs;
+	int iLunKnown;
+
+} __attribute__((aligned(sizeof(int)),packed))  X100_native_handle_t;
+
 
 struct window {
     struct display *display;
