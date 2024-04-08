@@ -962,37 +962,38 @@ handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
 
 static void
 pointer_handle_button(void *data, struct wl_pointer *,
-                      uint32_t, uint32_t, uint32_t,
+                      uint32_t, uint32_t, uint32_t button,
                       uint32_t state)
 {
     struct display* display = (struct display*)data;
-    // struct input_event event[2];
-    // struct timespec rt;
-    // unsigned int res, n = 0;
+    if(button == BTN_LEFT){
+        // convert pointer event to touch event
+        if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+            pointer_handle_button_to_touch_down(display);
+        } else {
+            pointer_handle_button_to_touch_up(display);
+        }
+    }else{
+        struct input_event event[2];
+        struct timespec rt;
+        unsigned int res, n = 0;
 
-    // if (ensure_pipe(display, INPUT_POINTER))
-    //     return;
+        if (ensure_pipe(display, INPUT_POINTER))
+            return;
 
-    // if (!display->pointer_surface)
-    //     return;
+        if (!display->pointer_surface)
+            return;
 
-    // if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-    //     ALOGE("%s:%d error in touch clock_gettime: %s",
-    //           __FILE__, __LINE__, strerror(errno));
-    // }
-    // ADD_EVENT(EV_KEY, button, state);
-    // ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    // res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
-
-    // convert pointer event to touch event
-
-    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        pointer_handle_button_to_touch_down(display);
-    } else {
-        pointer_handle_button_to_touch_up(display);
+        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+            ALOGE("%s:%d error in touch clock_gettime: %s",
+                   __FILE__, __LINE__, strerror(errno));
+        }
+        ADD_EVENT(EV_KEY, button, state);
+        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
     }
 }
+
 
 static void
 pointer_handle_axis(void *data, struct wl_pointer *,
