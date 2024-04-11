@@ -966,7 +966,7 @@ pointer_handle_button(void *data, struct wl_pointer *,
                       uint32_t state)
 {
     struct display* display = (struct display*)data;
-    if(button == BTN_LEFT && property_get_bool("fde.click_as_touch", false)){
+    if(((button == BTN_LEFT && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown){
         // convert pointer event to touch event
         if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
             pointer_handle_button_to_touch_down(display);
@@ -987,6 +987,14 @@ pointer_handle_button(void *data, struct wl_pointer *,
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
                    __FILE__, __LINE__, strerror(errno));
+        }
+
+        if(button == BTN_LEFT){
+            if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+                display->isMouseLeftDown = true;
+            } else {
+                display->isMouseLeftDown = false;
+            }
         }
         ADD_EVENT(EV_KEY, button, state);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
