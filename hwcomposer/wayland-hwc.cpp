@@ -1002,7 +1002,7 @@ pointer_handle_button(void *data, struct wl_pointer *,
     }
 }
 
-static void
+/*static void
 pointer_handle_axis_touch(struct display *display, unsigned int move)
 {
     struct input_event event[33];
@@ -1079,7 +1079,7 @@ pointer_handle_axis_touch(struct display *display, unsigned int move)
 
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
+}*/
 
 static void
 pointer_handle_axis(void *data, struct wl_pointer *,
@@ -1118,9 +1118,9 @@ pointer_handle_axis(void *data, struct wl_pointer *,
                                      std::fmod(display->wheelAccumulatorY, step);
     }
 
-    if(property_get_bool("fde.click_as_touch", false)){
-        pointer_handle_axis_touch(display, move);
-    }else{
+    //if(property_get_bool("fde.click_as_touch", false)){
+    //    pointer_handle_axis_touch(display, move);
+    //}else{
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
                   __FILE__, __LINE__, strerror(errno));
@@ -1132,7 +1132,7 @@ pointer_handle_axis(void *data, struct wl_pointer *,
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-    }
+    //}
 }
 
 static void
