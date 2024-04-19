@@ -134,6 +134,10 @@ struct display {
     bool reverseScroll;
     bool isTouchDown;
     bool isMouseLeftDown;
+    bool isAxisStarted;
+    int axis_start_x;
+    int axis_start_y;
+    int anti_shake;
     int touch_id[MAX_TOUCHPOINTS];
     std::map<struct wl_surface *, struct layerFrame> layers;
     std::map<struct wl_surface *, struct window *> windows;

@@ -872,6 +872,57 @@ pointer_handle_leave(void *data, struct wl_pointer *pointer,
 }
 
 static void
+pointer_handle_axis_touch_down_slot(struct display *display, int slot, int x, int y)
+{
+    struct input_event event[6];
+    struct timespec rt;
+    unsigned int res, n = 0;
+
+    if (ensure_pipe(display, INPUT_TOUCH))
+        return;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+        ALOGE("%s:%d error in touch clock_gettime: %s",
+              __FILE__, __LINE__, strerror(errno));
+    }
+
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, slot);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
+    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
+    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
+    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+
+    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
+    if (res < sizeof(event))
+        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+}
+
+static void
+pointer_handle_axis_touch_up_slot(struct display *display, int slot)
+{
+    struct input_event event[3];
+    struct timespec rt;
+    unsigned int res, n = 0;
+
+    if (ensure_pipe(display, INPUT_TOUCH))
+        return;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+        ALOGE("%s:%d error in touch clock_gettime: %s",
+              __FILE__, __LINE__, strerror(errno));
+    }
+
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, slot);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
+    if (res < sizeof(event))
+        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+}
+
+
+static void
 pointer_handle_motion(void *data, struct wl_pointer *,
                       uint32_t, wl_fixed_t sx, wl_fixed_t sy)
 {
@@ -880,6 +931,8 @@ pointer_handle_motion(void *data, struct wl_pointer *,
     struct timespec rt;
     int x, y;
     unsigned int res, n = 0;
+    bool ignor_motion = false;
+    display->anti_shake += 1;
 
     if (ensure_pipe(display, INPUT_POINTER))
         return;
@@ -900,26 +953,39 @@ pointer_handle_motion(void *data, struct wl_pointer *,
     x += display->layers[display->pointer_surface].x;
     y += display->layers[display->pointer_surface].y;
 
+    ignor_motion = display->isAxisStarted;
+    if(display->isAxisStarted && display->anti_shake > 4){
+        pointer_handle_axis_touch_down_slot(display, 1, display->axis_start_x+20, display->axis_start_y);
+        pointer_handle_axis_touch_up_slot(display, 0);
+        pointer_handle_axis_touch_up_slot(display, 1);
+        display->isAxisStarted = false;
+        display->anti_shake = 0;
+    }
+    if(!display->isAxisStarted){
+        display->axis_start_x = x;
+        display->axis_start_y = y;
+        display->anti_shake = 0;
+    }
+
     if (display->isTouchDown) {
         display->ptrPrvX = x;
         display->ptrPrvY = y;
         pointer_handle_button_to_touch_down(display);
     } else {
-        ADD_EVENT(EV_ABS, ABS_X, x);
-        ADD_EVENT(EV_ABS, ABS_Y, y);
-        ADD_EVENT(EV_REL, REL_X, x - display->ptrPrvX);
-        ADD_EVENT(EV_REL, REL_Y, y - display->ptrPrvY);
-        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-        display->ptrPrvX = x;
-        display->ptrPrvY = y;
+        if(!ignor_motion){
+            ADD_EVENT(EV_ABS, ABS_X, x);
+            ADD_EVENT(EV_ABS, ABS_Y, y);
+            ADD_EVENT(EV_REL, REL_X, x - display->ptrPrvX);
+            ADD_EVENT(EV_REL, REL_Y, y - display->ptrPrvY);
+            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+            display->ptrPrvX = x;
+            display->ptrPrvY = y;
 
-        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
-        if (res < sizeof(event))
-            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-
+            res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
+            if (res < sizeof(event))
+                ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+        }
     }
-    
-
 }
 
 void
@@ -966,6 +1032,15 @@ pointer_handle_button(void *data, struct wl_pointer *,
                       uint32_t state)
 {
     struct display* display = (struct display*)data;
+    if(display->isAxisStarted){
+        pointer_handle_axis_touch_down_slot(display, 1, display->axis_start_x+20, display->axis_start_y);
+        pointer_handle_axis_touch_up_slot(display, 0);
+        pointer_handle_axis_touch_up_slot(display, 1);
+        display->isAxisStarted = false;
+    }
+    display->axis_start_x = display->ptrPrvX;
+    display->axis_start_y = display->ptrPrvY;
+
     if(((button == BTN_LEFT && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown){
         // convert pointer event to touch event
         if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
@@ -1002,13 +1077,12 @@ pointer_handle_button(void *data, struct wl_pointer *,
     }
 }
 
-/*static void
-pointer_handle_axis_touch(struct display *display, unsigned int move)
+static void
+pointer_handle_axis_touch_down(struct display *display, unsigned int move)
 {
-    struct input_event event[33];
+    struct input_event event[12];
     struct timespec rt;
     unsigned int res, n = 0;
-    int x, y;
 
     if (ensure_pipe(display, INPUT_TOUCH))
         return;
@@ -1017,69 +1091,58 @@ pointer_handle_axis_touch(struct display *display, unsigned int move)
         ALOGE("%s:%d error in touch clock_gettime: %s",
               __FILE__, __LINE__, strerror(errno));
     }
-    x = display->ptrPrvX;
-    y = display->ptrPrvY;
 
-    if(move == 1){
+    if(!display->isAxisStarted){
+        display->isAxisStarted = true;
+        if(rt.tv_nsec >= 8 * 1000 * 1000){
+            rt.tv_nsec -= 8 * 1000 * 1000;
+        }else{
+            rt.tv_nsec += 992 * 1000 * 1000;
+            rt.tv_sec -= 1;
+        }
         ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
         ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axis_start_x);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axis_start_y);
         ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-        for(int i = 0; i < 4; i++){
-            rt.tv_nsec += 8 * 1000 * 1000;
-            rt.tv_sec += rt.tv_nsec/(1000*1000*1000);
-            rt.tv_nsec = rt.tv_nsec%(1000*1000*1000);
-            y += 12;
-            ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
-            ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
-            ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-        }
 
         rt.tv_nsec += 8 * 1000 * 1000;
         rt.tv_sec += rt.tv_nsec/(1000*1000*1000);
         rt.tv_nsec = rt.tv_nsec%(1000*1000*1000);
+    }
+
+    if(move < 50){
+        if(display->wheelEvtIsDiscrete){
+            display->axis_start_y += 50;
+        }else{
+            display->axis_start_y += 22;
+        }
         ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
-        ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
+        ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axis_start_x);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axis_start_y);
+        ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+        ALOGE("pointer_handle_axis_touch down time rt.tv_sec: %ld, rt.tv_nsec: %ld", rt.tv_sec, rt.tv_nsec);
     }else{
+        if(display->wheelEvtIsDiscrete){
+            display->axis_start_y -= 50;
+        }else{
+            display->axis_start_y -= 22;
+        }
         ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
         ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axis_start_x);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axis_start_y);
         ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-        for(int i = 0; i < 4; i++){
-            rt.tv_nsec += 8 * 1000 * 1000;
-            rt.tv_sec += rt.tv_nsec/(1000*1000*1000);
-            rt.tv_nsec = rt.tv_nsec%(1000*1000*1000);
-            y -= 12;
-            ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
-            ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
-            ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-        }
-
-        rt.tv_nsec += 8 * 1000 * 1000;
-        rt.tv_sec += rt.tv_nsec/(1000*1000*1000);
-        rt.tv_nsec = rt.tv_nsec%(1000*1000*1000);
-        ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
-        ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
-        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+        ALOGE("pointer_handle_axis_touch down time rt.tv_sec: %ld, rt.tv_nsec: %ld", rt.tv_sec, rt.tv_nsec);
     }
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}*/
+}
 
 static void
 pointer_handle_axis(void *data, struct wl_pointer *,
@@ -1118,9 +1181,10 @@ pointer_handle_axis(void *data, struct wl_pointer *,
                                      std::fmod(display->wheelAccumulatorY, step);
     }
 
-    //if(property_get_bool("fde.click_as_touch", false)){
-    //    pointer_handle_axis_touch(display, move);
-    //}else{
+    if(property_get_bool("fde.click_as_touch", false)){
+        display->anti_shake = 0;
+        pointer_handle_axis_touch_down(display, move);
+    }else{
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
                   __FILE__, __LINE__, strerror(errno));
@@ -1132,7 +1196,7 @@ pointer_handle_axis(void *data, struct wl_pointer *,
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-    //}
+    }
 }
 
 static void
@@ -1143,8 +1207,15 @@ pointer_handle_axis_source(void *data, struct wl_pointer *, uint32_t source)
 }
 
 static void
-pointer_handle_axis_stop(void *, struct wl_pointer *, uint32_t, uint32_t)
+pointer_handle_axis_stop(void *data, struct wl_pointer *, uint32_t, uint32_t)
 {
+    struct display* display = (struct display*)data;
+    if(display->isAxisStarted){
+        display->isAxisStarted = false;
+        pointer_handle_axis_touch_up_slot(display, 0);
+        display->axis_start_x = display->ptrPrvX;
+        display->axis_start_y = display->ptrPrvY;
+    }
 }
 
 static void
