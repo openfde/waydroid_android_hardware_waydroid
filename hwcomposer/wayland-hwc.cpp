@@ -1030,7 +1030,7 @@ pointer_handle_button(void *data, struct wl_pointer *,
     pointer_cancel_axis_to_touch(display, false, true);
 
     // Left button convert to touch event, right button reserved mouse event
-    if(button == BTN_LEFT) {
+    if(((button == BTN_LEFT && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown) {
         // convert pointer event to touch event
         if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
             pointer_handle_button_to_touch_down(display);
@@ -1052,7 +1052,13 @@ pointer_handle_button(void *data, struct wl_pointer *,
             ALOGE("%s:%d error in touch clock_gettime: %s",
                    __FILE__, __LINE__, strerror(errno));
         }
-
+        if(button == BTN_LEFT){
+            if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+                display->isMouseLeftDown = true;
+            } else {
+                display->isMouseLeftDown = false;
+            }
+        }
         ADD_EVENT(EV_KEY, button, state);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
@@ -1113,63 +1119,61 @@ pointer_axis_to_touch(struct display *display, int move)
 
 static void
 pointer_handle_axis(void *data, struct wl_pointer *,
-                    uint32_t, uint32_t /*axis*/, wl_fixed_t value)
+                    uint32_t, uint32_t axis, wl_fixed_t value)
 {
     struct display* display = (struct display*)data;
-    int move = display->reverseScroll ? wl_fixed_to_int(value) : -wl_fixed_to_int(value);
-
+    int touchMove = display->reverseScroll ? wl_fixed_to_int(value) : -wl_fixed_to_int(value);
     if (display->wheelEvtIsDiscrete) {
-        move *= 3;
+        touchMove *= 3;
     }
 
-    pointer_axis_to_touch(display, move);
+    struct input_event event[2];
+    struct timespec rt;
+    unsigned int move, res, n = 0;
+    double fVal = wl_fixed_to_double(value) / 10.0f;
+    double step = 1.0f;
 
-    // struct input_event event[2];
-    // struct timespec rt;
-    // unsigned int n, res, move = 0;
-    // double fVal = wl_fixed_to_double(value) / 10.0f;
-    // double step = 1.0f;
+    if (ensure_pipe(display, INPUT_POINTER))
+        return;
 
-    // if (ensure_pipe(display, INPUT_POINTER))
-    //     return;
+    if (!display->pointer_surface)
+        return;
 
-    // if (!display->pointer_surface)
-    //     return;
+    if (!display->reverseScroll) {
+        fVal = -fVal;
+    }
 
-    // if (!display->reverseScroll) {
-    //     fVal = -fVal;
-    // }
+    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+        display->wheelAccumulatorY += fVal;
+        if (std::abs(display->wheelAccumulatorY) < step)
+            return;
+        move = (int)(display->wheelAccumulatorY / step);
+        display->wheelAccumulatorY = display->wheelEvtIsDiscrete ? 0 :
+                                     std::fmod(display->wheelAccumulatorY, step);
+    } else {
+        display->wheelAccumulatorX += fVal;
+        if (std::abs(display->wheelAccumulatorX) < step)
+            return;
+        move = (int)(display->wheelAccumulatorX / step);
+        display->wheelAccumulatorX = display->wheelEvtIsDiscrete ? 0 :
+                                     std::fmod(display->wheelAccumulatorX, step);
+    }
 
-    // if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-    //     display->wheelAccumulatorY += fVal;
-    //     if (std::abs(display->wheelAccumulatorY) < step)
-    //         return;
-    //     move = (int)(display->wheelAccumulatorY / step);
-    //     display->wheelAccumulatorY = display->wheelEvtIsDiscrete ? 0 :
-    //                                  std::fmod(display->wheelAccumulatorY, step);
-    // } else {
-    //     display->wheelAccumulatorX += fVal;
-    //     if (std::abs(display->wheelAccumulatorX) < step)
-    //         return;
-    //     move = (int)(display->wheelAccumulatorX / step);
-    //     display->wheelAccumulatorX = display->wheelEvtIsDiscrete ? 0 :
-    //                                  std::fmod(display->wheelAccumulatorX, step);
-    // }
+    if(property_get_bool("fde.click_as_touch", false)){
+        pointer_axis_to_touch(display, touchMove);
+    }else{
+        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+            ALOGE("%s:%d error in touch clock_gettime: %s",
+                  __FILE__, __LINE__, strerror(errno));
+        }
+        ADD_EVENT(EV_REL, (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+              ? REL_WHEEL : REL_HWHEEL, move);
+        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
 
-    // if(property_get_bool("fde.click_as_touch", false)){
-    // }else{
-    //     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-    //         ALOGE("%s:%d error in touch clock_gettime: %s",
-    //               __FILE__, __LINE__, strerror(errno));
-    //     }
-    //     ADD_EVENT(EV_REL, (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
-    //           ? REL_WHEEL : REL_HWHEEL, move);
-    //     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    //     res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
-    //     if (res < sizeof(event))
-    //         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-    // }
+        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
+        if (res < sizeof(event))
+            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+    }
 }
 
 static void
