@@ -18,7 +18,7 @@ include $(CLEAR_VARS)
 LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_CFLAGS += -DQEMU_HARDWARE
-LOCAL_SHARED_LIBRARIES := liblog libcutils libhardware libjsoncpp libbase libutils
+LOCAL_SHARED_LIBRARIES := liblog libcutils libhardware libbase libutils
 LOCAL_SRC_FILES := gps_open_fde.cpp
 LOCAL_MODULE := gps.open_fde
 include $(BUILD_SHARED_LIBRARY)

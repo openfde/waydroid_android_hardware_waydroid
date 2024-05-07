@@ -24,10 +24,7 @@
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <string>
-#include <json/json.h>
-#include <json/reader.h>
-#include <utils/Vector.h>
-#include <utils/CallStack.h>
+#include <log/log.h>
 #include "android-base/file.h"
 
 using std::string;
@@ -382,7 +379,7 @@ static void nmea_reader_addc(NmeaReader* r, int c)
     r->in[r->pos] = (char)c;
     r->pos       += 1;
 
-    if (c == '\n') {
+    if (c == 'M') {
         nmea_reader_parse( r );
         r->pos = 0;
     }
@@ -695,10 +692,12 @@ static void gps_state_thread(void*  arg)
     }
 }
 
-void send_last_data(int fd, android::Vector<string> &data)
+void send_last_data(int fd)
 {
-	int default_value = property_get_int32("persist.fde.gps", 0);
-	Writen(fd, (void *)data[default_value].c_str(), data[default_value].size());
+    char buffer[128] = {0};
+	property_get("persist.fde.gnss", buffer, "$GPGGA,,28.228304,N,112.938882,E,,,,58,M");
+	D("strlen(buffer): %zu", strlen(buffer));
+	Writen(fd, (void *)buffer, strlen(buffer));
 }
 
 void * server(void * __unused arg)
@@ -723,47 +722,6 @@ void * server(void * __unused arg)
 
 	Listen(listenfd, 1024);
 
-	string gps_json_path = "/vendor/etc/config/gps.json";
-	string gps_info;
-	int gps_info_size = 0;
-	int city_counts = 0;
-
-	android::Vector<string> gps_json_data;
-	Json::Reader gps_json_reader;
-	Json::Value root;
-
-	if (!android::base::ReadFileToString(gps_json_path, &gps_info)) {
-	    D("ReadFileToString: %s", strerror(errno));
-	}
-	if (gps_json_reader.parse(gps_info, root)) {
-	    for (auto country : root) {
-            for (auto province : country["provinces"]) {
-				gps_info_size += province["cities"].size();
-			}
-	    }
-		
-        D("gps_info_size :%d\n", gps_info_size);
-		gps_json_data.insertAt(0, gps_info_size);
-	    for (auto country : root) {
-			D("provinces size: %d\n", country["provinces"].size());
-            for (auto province : country["provinces"]) {
-			   for (auto city : province["cities"]) {
-				   string& gps = gps_json_data.editItemAt(city_counts++);
-			       gps = city["gps"].asString();
-				   D("city[gps] :%s\n", city["gps"].asString().c_str());
-			    }
-			}
-	    }
-
-#if GPS_DEBUG
-	    for (string s : gps_json_data) {
-		    D("FUNC: %s, FILE: %s, LINE: %d, s: %s\n", __FUNCTION__, __FILE__, __LINE__, s.c_str());
-	    }
-#endif
-	} else {
-		D("Could not parse configuration file: %s", gps_json_reader.getFormattedErrorMessages().c_str());
-	}
-
 	for (;;) {
 		clilen = sizeof(cliaddr);
 		if ((connfd = accept(listenfd, (struct sockaddr *) &cliaddr, &clilen)) < 0) {
@@ -778,12 +736,13 @@ void * server(void * __unused arg)
 		if (((n = read(connfd, buf, 4096)) > 0) && (strncmp("H", buf, 1) == 0)) {
             client_hal_fd = connfd;
 			usleep(5000);
-		    send_last_data(client_hal_fd, gps_json_data);
+		    send_last_data(client_hal_fd);
 		} else if ((n > 0) && (strncmp("send", buf, 4) == 0)) {
-			send_last_data(client_hal_fd, gps_json_data);
-		} else if ((n > 0) && (((atoi(buf) < gps_info_size) && (atoi(buf) > 0)) || ((strcmp("0", buf) == 0) && (atoi(buf) == 0)))) {
-			Writen(client_hal_fd, (void *)gps_json_data[atoi(buf)].c_str(), gps_json_data[atoi(buf)].size());
-			property_set("persist.fde.gps", buf);
+			send_last_data(client_hal_fd);
+		} else if ((n > 0) && (strncmp("$GPGGA,,", buf, strlen("$GPGGA,,")) == 0)) {
+			D("get buf: %s\n", buf);
+			Writen(client_hal_fd, (void *)buf, strlen(buf));
+			property_set("persist.fde.gnss", buf);
 			
 		} else {
 			D("unknown buf: %s\n", buf);
