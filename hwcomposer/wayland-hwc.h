@@ -170,6 +170,8 @@ struct display {
 
     bool isMaximized;
     sp<IWaydroidTask> task;
+    uint32_t serial;
+    int icon_id;
 };
 
 struct buffer {

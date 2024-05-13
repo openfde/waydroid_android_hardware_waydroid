@@ -859,9 +859,11 @@ pointer_handle_enter(void *data, struct wl_pointer *pointer,
 {
     struct display *display = (struct display *)data;
     display->pointer_surface = surface;
-    if (display->cursor_surface)
+    if (display->cursor_surface){
+        display->serial = serial;
         wl_pointer_set_cursor(pointer, serial,
                               display->cursor_surface, 0, 0);
+    }
 }
 
 static void
