@@ -99,20 +99,21 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         return;
     }
 
+    fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing
+
     if (fb_layer->handle != pdev->cursor_layer_handle) {
         auto it = pdev->display->buffer_map.find(fb_layer->handle);
-            if (it != pdev->display->buffer_map.end()) {
-                destroy_buffer(it->second);
-                pdev->display->buffer_map.erase(it);
-            }
+        if (it != pdev->display->buffer_map.end()) {
+            destroy_buffer(it->second);
+            pdev->display->buffer_map.erase(it);
+        }
+    } else {
+        return;
     }
 
     struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
     if (!buf) {
         ALOGE("Failed to get wayland buffer");
-        if (fb_layer->acquireFenceFd != -1) {
-            close(fb_layer->acquireFenceFd);
-        }
         return;
     }
 
@@ -137,12 +138,6 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
         wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
                                       pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
-        //ALOGD("wl_pointer_set_cursor icon_id: %d, icon_hotspot_x: %d, icon_hotspot_y: %d", icon_id, icon_hotspot_x, icon_hotspot_y);
-    }
-    fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing
-
-    if (fb_layer->acquireFenceFd != -1) {
-        close(fb_layer->acquireFenceFd);
     }
 }
 
