@@ -81,7 +81,65 @@ struct waydroid_hwc_composer_device_1 {
     int next_sync_point;
     bool use_subsurface;
     bool multi_windows;
+    buffer_handle_t cursor_layer_handle; // last cursor layer handle
 };
+
+static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos);
+static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
+
+
+static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
+    if (!pdev->display->cursor_surface) {
+        return;
+    }
+
+    std::string layer_name = pdev->display->layer_names[layer];
+
+    if (layer_name.substr(0, 6) != "Sprite" || fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET) {
+        return;
+    }
+
+    fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing
+
+    if (fb_layer->handle != pdev->cursor_layer_handle) {
+        auto it = pdev->display->buffer_map.find(fb_layer->handle);
+        if (it != pdev->display->buffer_map.end()) {
+            destroy_buffer(it->second);
+            pdev->display->buffer_map.erase(it);
+        }
+    } else {
+        return;
+    }
+
+    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+    if (!buf) {
+        ALOGE("Failed to get wayland buffer");
+        return;
+    }
+
+    pdev->cursor_layer_handle = fb_layer->handle;
+    wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
+    if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+        wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+    else
+        wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+    if (!pdev->display->viewporter && pdev->display->scale > 1) {
+        // With no viewporter the scale is guaranteed to be integer
+        wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
+    } else if (pdev->display->viewporter && pdev->display->scale != 1) {
+        setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
+    }
+
+    wl_surface_commit(pdev->display->cursor_surface);
+    int32_t icon_id = property_get_int32("fde.mouse_icon_id", 1000);
+    if(pdev->display->icon_id != icon_id){
+        pdev->display->icon_id = icon_id;
+        int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
+        int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
+        wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
+                                      pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
+    }
+}
 
 static int hwc_prepare(hwc_composer_device_1_t* dev,
                        size_t numDisplays, hwc_display_contents_1_t** displays) {
@@ -98,7 +156,9 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
 
     std::pair<int, int> skipped(-1, -1);
     for (size_t i = 0; i < contents->numHwLayers; i++) {
-      if (!(contents->hwLayers[i].flags & HWC_SKIP_LAYER))
+      hwc_layer_1_t* fb_layer = &contents->hwLayers[i];
+
+      if (!(fb_layer->flags & HWC_SKIP_LAYER))
         continue;
 
       if (skipped.first == -1)
@@ -107,9 +167,11 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
     }
 
     for (size_t i = 0; i < contents->numHwLayers; i++) {
-        if (contents->hwLayers[i].compositionType == HWC_FRAMEBUFFER_TARGET)
+        hwc_layer_1_t* fb_layer = &contents->hwLayers[i];
+
+        if (fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET)
             continue;
-        if (contents->hwLayers[i].flags & HWC_SKIP_LAYER)
+        if (fb_layer->flags & HWC_SKIP_LAYER)
             continue;
 
         /* skipped layers have to be composited by SurfaceFlinger; so in order
@@ -119,12 +181,13 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
            being composited, so we won't render skipped layers correctly in that mode */
         if (!pdev->multi_windows)
             if (skipped.first >= 0 && i > skipped.first && i < skipped.second)
-                contents->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
+                fb_layer->compositionType = HWC_FRAMEBUFFER;
 
-        if (contents->hwLayers[i].compositionType ==
+        if (fb_layer->compositionType ==
             (pdev->use_subsurface ? HWC_FRAMEBUFFER : HWC_OVERLAY))
-            contents->hwLayers[i].compositionType =
+            fb_layer->compositionType =
                 (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER);
+        update_cursor_surface(pdev, fb_layer, i);
     }
 
     return 0;
@@ -1172,6 +1235,8 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     pdev->timeline_fd = sw_sync_timeline_create();
     pdev->next_sync_point = 1;
 
+    pdev->cursor_layer_handle = 0;
+
     if (property_get("waydroid.xdg_runtime_dir", property, "/run/user/1000") > 0) {
         setenv("XDG_RUNTIME_DIR", property, 1);
     }
@@ -1205,7 +1270,7 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     if (pdev->display->refresh > 1000 && pdev->display->refresh < 1000000)
         pdev->vsync_period_ns = 1000 * 1000 * 1000 / (pdev->display->refresh / 1000);
 
-    if (!property_get_bool("persist.waydroid.cursor_on_subsurface", false)) {
+    if (true/*!property_get_bool("persist.waydroid.cursor_on_subsurface", false)*/) {
         pdev->display->cursor_surface =
             wl_compositor_create_surface(pdev->display->compositor);
         if (pdev->display->viewporter) {
@@ -1213,7 +1278,6 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
                 wp_viewporter_get_viewport(pdev->display->viewporter, pdev->display->cursor_surface);
         }
     }
-
 
     struct timespec rt;
     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
