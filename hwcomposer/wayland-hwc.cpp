@@ -863,6 +863,7 @@ pointer_handle_enter(void *data, struct wl_pointer *pointer,
         display->serial = serial;
         wl_pointer_set_cursor(pointer, serial,
                               display->cursor_surface, 0, 0);
+        display->cursor_layer_handle = 0;
     }
 }
 
@@ -872,8 +873,10 @@ pointer_handle_leave(void *data, struct wl_pointer *pointer,
 {
     struct display *display = (struct display *)data;
     display->pointer_surface = NULL;
-    if (display->cursor_surface)
+    if (display->cursor_surface){
         wl_pointer_set_cursor(pointer, serial, NULL, 0, 0);
+        display->cursor_layer_handle = 0;
+    }
 }
 
 

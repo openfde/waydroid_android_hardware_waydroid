@@ -81,7 +81,6 @@ struct waydroid_hwc_composer_device_1 {
     int next_sync_point;
     bool use_subsurface;
     bool multi_windows;
-    buffer_handle_t cursor_layer_handle; // last cursor layer handle
 };
 
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos);
@@ -101,7 +100,7 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
 
     fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing
 
-    if (fb_layer->handle != pdev->cursor_layer_handle) {
+    if (fb_layer->handle != pdev->display->cursor_layer_handle) {
         auto it = pdev->display->buffer_map.find(fb_layer->handle);
         if (it != pdev->display->buffer_map.end()) {
             destroy_buffer(it->second);
@@ -117,7 +116,7 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         return;
     }
 
-    pdev->cursor_layer_handle = fb_layer->handle;
+    pdev->display->cursor_layer_handle = fb_layer->handle;
     wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
     if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
         wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
@@ -1235,8 +1234,6 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     pdev->timeline_fd = sw_sync_timeline_create();
     pdev->next_sync_point = 1;
 
-    pdev->cursor_layer_handle = 0;
-
     if (property_get("waydroid.xdg_runtime_dir", property, "/run/user/1000") > 0) {
         setenv("XDG_RUNTIME_DIR", property, 1);
     }
@@ -1251,6 +1248,7 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
         return -ENODEV;
     }
     ALOGE("wayland display %p", pdev->display);
+    pdev->display->cursor_layer_handle = 0;
 
     pthread_mutex_init(&pdev->vsync_lock, NULL);
     pdev->vsync_callback_enabled = true;
