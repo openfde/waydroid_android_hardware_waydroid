@@ -115,7 +115,7 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
             return;
         }
         int32_t icon_id = property_get_int32("fde.mouse_icon_id", 1000);
-        if(pdev->display->icon_id != icon_id || !pdev->display->cursor_has_show || pdev->display->cursor_layer_handle == 0){
+        if(pdev->display->icon_id != icon_id || icon_id == -1 || !pdev->display->cursor_has_show || pdev->display->cursor_layer_handle == 0){
             pdev->display->cursor_layer_handle = fb_layer->handle;
             if(!pdev->display->cursor_has_show){
                 pdev->display->cursor_has_show = true;
