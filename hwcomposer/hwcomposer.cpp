@@ -106,38 +106,50 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
             destroy_buffer(it->second);
             pdev->display->buffer_map.erase(it);
         }
-    } else {
-        return;
     }
 
-    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
-    if (!buf) {
-        ALOGE("Failed to get wayland buffer");
-        return;
+    if(property_get_bool("fde.show_wayland_cursor", true)){
+        struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+        if (!buf) {
+            ALOGE("Failed to get wayland buffer");
+            return;
+        }
+        int32_t icon_id = property_get_int32("fde.mouse_icon_id", 1000);
+        if(pdev->display->icon_id != icon_id || !pdev->display->cursor_has_show || pdev->display->cursor_layer_handle == 0){
+            pdev->display->cursor_layer_handle = fb_layer->handle;
+            if(!pdev->display->cursor_has_show){
+                pdev->display->cursor_has_show = true;
+                pdev->display->cursor_layer_handle = 0;
+            }
+            pdev->display->icon_id = icon_id;
+            wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
+            if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+                wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+            else
+                wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+            if (!pdev->display->viewporter && pdev->display->scale > 1) {
+                // With no viewporter the scale is guaranteed to be integer
+                wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
+            } else if (pdev->display->viewporter && pdev->display->scale != 1) {
+                setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
+            }
+
+            wl_surface_commit(pdev->display->cursor_surface);
+            int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
+            int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
+            wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
+                                          pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
+        }
+    }else{
+        pdev->display->cursor_layer_handle = fb_layer->handle;
+        if(pdev->display->cursor_has_show){
+            wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
+            pdev->display->cursor_has_show = false;
+            pdev->display->cursor_layer_handle = 0;
+        }
     }
 
-    pdev->display->cursor_layer_handle = fb_layer->handle;
-    wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
-    if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-        wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-    else
-        wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-    if (!pdev->display->viewporter && pdev->display->scale > 1) {
-        // With no viewporter the scale is guaranteed to be integer
-        wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
-    } else if (pdev->display->viewporter && pdev->display->scale != 1) {
-        setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
-    }
 
-    wl_surface_commit(pdev->display->cursor_surface);
-    int32_t icon_id = property_get_int32("fde.mouse_icon_id", 1000);
-    if(pdev->display->icon_id != icon_id){
-        pdev->display->icon_id = icon_id;
-        int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
-        int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
-        wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
-                                      pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
-    }
 }
 
 static int hwc_prepare(hwc_composer_device_1_t* dev,

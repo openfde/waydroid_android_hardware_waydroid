@@ -173,6 +173,7 @@ struct display {
     uint32_t serial;
     int icon_id;
     buffer_handle_t cursor_layer_handle; // last cursor layer handle
+    bool cursor_has_show;
 };
 
 struct buffer {
