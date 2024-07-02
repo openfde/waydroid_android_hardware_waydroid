@@ -1027,6 +1027,31 @@ static int adev_close(hw_device_t *device)
     return 0;
 }
 
+static char *adev_get_devs(struct audio_hw_device *dev, bool input)
+{
+    ALOGV("%s: %d",__FUNCTION__, input);
+    return input ? pa_get_input_devs() : pa_get_output_devs();
+}
+
+static int adev_set_dev_volume(struct audio_hw_device *dev, bool input, const char *dev_name, float volume)
+{
+    ALOGV("%s: %d-%s-%f", __FUNCTION__, input, dev_name, volume);
+    return input ? pa_set_input_dev_volume(dev_name, volume) : pa_set_output_dev_volume(dev_name, volume);
+}
+
+static int adev_set_dev_mute(struct audio_hw_device *dev, bool input, const char *dev_name, bool mute)
+{
+    ALOGV("%s: %d-%s-%d", __FUNCTION__, input, dev_name, mute);
+    return input ? pa_set_input_dev_mute(dev_name, mute) : pa_set_output_dev_mute(dev_name, mute);
+}
+
+static char *adev_set_default_dev(struct audio_hw_device *dev, bool input, const char *dev_name, bool needInfo)
+{
+    ALOGV("%s: %d-%s-%d", __FUNCTION__, input, dev_name, needInfo);
+    return input ? pa_set_input_default_dev(dev_name, needInfo) 
+	             : pa_set_output_default_dev(dev_name, needInfo);
+}
+
 static int adev_open(const hw_module_t* module, const char* name,
         hw_device_t** device)
 {
@@ -1067,6 +1092,11 @@ static int adev_open(const hw_module_t* module, const char* name,
     adev->hw_device.open_input_stream = adev_open_input_stream;
     adev->hw_device.close_input_stream = adev_close_input_stream;
     adev->hw_device.dump = adev_dump;
+    adev->hw_device.get_devs = adev_get_devs;
+    adev->hw_device.set_dev_volume = adev_set_dev_volume;
+    adev->hw_device.set_dev_mute = adev_set_dev_mute;
+    adev->hw_device.set_default_dev = adev_set_default_dev;
+
 
     adev->out_devices = AUDIO_DEVICE_OUT_SPEAKER;
     adev->in_devices = AUDIO_DEVICE_IN_BUILTIN_MIC & ~AUDIO_DEVICE_BIT_IN;
