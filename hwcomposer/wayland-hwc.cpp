@@ -1134,7 +1134,7 @@ pointer_handle_axis(void *data, struct wl_pointer *,
     struct display* display = (struct display*)data;
     int touchMove = display->reverseScroll ? wl_fixed_to_int(value) : -wl_fixed_to_int(value);
     if (display->wheelEvtIsDiscrete) {
-        touchMove *= 3;
+        touchMove *= 6;
     }
 
     struct input_event event[2];
