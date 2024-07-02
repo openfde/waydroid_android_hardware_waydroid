@@ -93,6 +93,14 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
     }
 
     std::string layer_name = pdev->display->layer_names[layer];
+    bool showWaylandCursor = property_get_bool("fde.show_wayland_cursor", true);
+    if(!showWaylandCursor){
+        if(pdev->display->cursor_has_show){
+            wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
+            pdev->display->cursor_has_show = false;
+            pdev->display->cursor_layer_handle = 0;
+        }
+    }
 
     if (layer_name.substr(0, 6) != "Sprite" || fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET) {
         return;
@@ -108,7 +116,7 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         }
     }
 
-    if(property_get_bool("fde.show_wayland_cursor", true)){
+    if(showWaylandCursor){
         struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
         if (!buf) {
             ALOGE("Failed to get wayland buffer");
@@ -139,13 +147,6 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
             int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
             wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
                                           pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
-        }
-    }else{
-        pdev->display->cursor_layer_handle = fb_layer->handle;
-        if(pdev->display->cursor_has_show){
-            wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
-            pdev->display->cursor_has_show = false;
-            pdev->display->cursor_layer_handle = 0;
         }
     }
 
