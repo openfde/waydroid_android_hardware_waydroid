@@ -260,7 +260,7 @@ static void get_input_devs_callback(pa_context *c, const pa_source_info *i, int 
     char result[1024] = {0};
     int count;
     for (p = i->ports; *p; p++) {
-        if ((*p)->available == PA_PORT_AVAILABLE_YES) {
+        if ((*p)->available != PA_PORT_AVAILABLE_NO) {
             if (i->active_port && strcmp(i->active_port->name, (*p)->name) == 0) {
                 pa_volume_t volume = i->volume.values[0];
                 int vol = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
