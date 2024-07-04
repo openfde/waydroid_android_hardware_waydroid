@@ -557,15 +557,16 @@ static void gps_state_thread(void*  arg)
     int         control_fd = state->control[1];
     GpsStatus gps_status;
     gps_status.size = sizeof(gps_status);
-    GpsSvStatus  gps_sv_status;
-    memset(&gps_sv_status, 0, sizeof(gps_sv_status));
-    gps_sv_status.size = sizeof(gps_sv_status);
-    gps_sv_status.num_svs = 1;
-    gps_sv_status.sv_list[0].size = sizeof(gps_sv_status.sv_list[0]);
-    gps_sv_status.sv_list[0].prn = 17;
-    gps_sv_status.sv_list[0].snr = 60.0;
-    gps_sv_status.sv_list[0].elevation = 30.0;
-    gps_sv_status.sv_list[0].azimuth = 30.0;
+    GnssSvStatus gnss_sv_status;
+    memset(&gnss_sv_status, 0, sizeof(gnss_sv_status));
+    gnss_sv_status.size = sizeof(gnss_sv_status);
+    gnss_sv_status.num_svs = 1;
+    gnss_sv_status.gnss_sv_list[0].size = sizeof(gnss_sv_status.gnss_sv_list[0]);
+    gnss_sv_status.gnss_sv_list[0].svid = 1;
+    gnss_sv_status.gnss_sv_list[0].c_n0_dbhz = 0.0;
+    gnss_sv_status.gnss_sv_list[0].elevation = 30.0;
+    gnss_sv_status.gnss_sv_list[0].azimuth = 30.0;
+    gnss_sv_status.gnss_sv_list[0].flags = GNSS_SV_FLAGS_USED_IN_FIX;
 
     nmea_reader_init(reader);
 
@@ -600,8 +601,8 @@ static void gps_state_thread(void*  arg)
 		}
 
         nevents = epoll_wait(epoll_fd, events, 2, timeout);
-        if (state->callbacks.sv_status_cb) {
-            state->callbacks.sv_status_cb(&gps_sv_status);
+        if (state->callbacks.gnss_sv_status_cb) {
+            state->callbacks.gnss_sv_status_cb(&gnss_sv_status);
         }
         // update satilite info
         if (nevents < 0) {
