@@ -114,22 +114,21 @@ static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
             destroy_buffer(it->second);
             pdev->display->buffer_map.erase(it);
         }
+        pdev->display->cursor_layer_handle = 0;
     }
 
     if(showWaylandCursor){
-        struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
-        if (!buf) {
-            ALOGE("Failed to get wayland buffer");
-            return;
-        }
-        int32_t icon_id = property_get_int32("fde.mouse_icon_id", 1000);
-        if(pdev->display->icon_id != icon_id || icon_id == -1 || !pdev->display->cursor_has_show || pdev->display->cursor_layer_handle == 0){
+        if(!pdev->display->cursor_has_show || pdev->display->cursor_layer_handle == 0){
+            struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+            if (!buf) {
+                ALOGE("Failed to get wayland buffer");
+                return;
+            }
             pdev->display->cursor_layer_handle = fb_layer->handle;
             if(!pdev->display->cursor_has_show){
                 pdev->display->cursor_has_show = true;
                 pdev->display->cursor_layer_handle = 0;
             }
-            pdev->display->icon_id = icon_id;
             wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
             if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
                 wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
