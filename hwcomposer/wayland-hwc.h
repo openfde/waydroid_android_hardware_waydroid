@@ -138,6 +138,7 @@ struct display {
     bool isTouchDown;
     bool isMouseLeftDown;
     int axisY;
+    int axisX;
     int64_t lastAxisEventNanoSeconds;
     int touch_id[MAX_TOUCHPOINTS];
     std::map<struct wl_surface *, struct layerFrame> layers;
