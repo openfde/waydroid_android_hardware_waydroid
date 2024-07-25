@@ -86,70 +86,71 @@ struct waydroid_hwc_composer_device_1 {
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos);
 static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
+static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
+    auto it = pdev->display->buffer_map.find(handle);
+    if (it != pdev->display->buffer_map.end()) {
+        destroy_buffer(it->second);
+        pdev->display->buffer_map.erase(it);
+    }
+}
 
-static void update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
+static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
     if (!pdev->display->cursor_surface) {
-        return;
+        return false;
     }
 
     std::string layer_name = pdev->display->layer_names[layer];
-    bool showWaylandCursor = property_get_bool("fde.show_wayland_cursor", true);
-    if(!showWaylandCursor){
-        if(pdev->display->cursor_has_show){
-            wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
-            pdev->display->cursor_has_show = false;
-            pdev->display->cursor_layer_handle = 0;
-        }
-    }
 
     if (layer_name.substr(0, 6) != "Sprite" || fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET) {
-        return;
+        return false;
     }
 
-    fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing
+    fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing hide internal cursor
 
-    if (fb_layer->handle != pdev->display->cursor_layer_handle) {
-        auto it = pdev->display->buffer_map.find(fb_layer->handle);
-        if (it != pdev->display->buffer_map.end()) {
-            destroy_buffer(it->second);
-            pdev->display->buffer_map.erase(it);
-        }
-        pdev->display->cursor_layer_handle = 0;
-    }
-
-    if(showWaylandCursor){
-        if(!pdev->display->cursor_has_show || pdev->display->cursor_layer_handle == 0){
-            struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
-            if (!buf) {
-                ALOGE("Failed to get wayland buffer");
-                return;
-            }
-            pdev->display->cursor_layer_handle = fb_layer->handle;
-            if(!pdev->display->cursor_has_show){
-                pdev->display->cursor_has_show = true;
-                pdev->display->cursor_layer_handle = 0;
-            }
-            wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
-            if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-                wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-            else
-                wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-            if (!pdev->display->viewporter && pdev->display->scale > 1) {
-                // With no viewporter the scale is guaranteed to be integer
-                wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
-            } else if (pdev->display->viewporter && pdev->display->scale != 1) {
-                setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
-            }
-
-            wl_surface_commit(pdev->display->cursor_surface);
-            int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
-            int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
-            wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
-                                          pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
+    /*
+     * To update the wayland cursor, the fde.mouse_icon_addr system property was introduced.
+     * When the internal mouse shape changes, its value will change accordingly.
+     * Its value is set by SpriteController and PointerController.
+     */
+    int64_t mouse_icon_addr = property_get_int64("fde.mouse_icon_addr", 0);
+    if (pdev->display->mouse_icon_addr != mouse_icon_addr) {
+        pdev->display->mouse_icon_addr = mouse_icon_addr;
+        pdev->display->additional_refresh_cursor_times = 0;
+        erase_cursor_layer_buffer(pdev, fb_layer->handle);
+    }else{
+        if(pdev->display->additional_refresh_cursor_times > 3){      //Refresh the wayland cursor three additional times
+            return true;
+        }else{
+            erase_cursor_layer_buffer(pdev, fb_layer->handle);
         }
     }
 
+    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+    if (!buf) {
+        ALOGE("Failed to get wayland buffer");
+        return true;
+    }
 
+    wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
+    if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+        wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+    else
+        wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+    if (!pdev->display->viewporter && pdev->display->scale > 1) {
+        // With no viewporter the scale is guaranteed to be integer
+        wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
+    } else if (pdev->display->viewporter && pdev->display->scale != 1) {
+        setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
+    }
+
+    wl_surface_commit(pdev->display->cursor_surface);
+    int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
+    int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
+    wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
+                                  pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
+    pdev->display->additional_refresh_cursor_times++;
+
+    return true;
 }
 
 static int hwc_prepare(hwc_composer_device_1_t* dev,
@@ -177,6 +178,7 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
       skipped.second = i;
     }
 
+    bool foundCursorLayer = false;
     for (size_t i = 0; i < contents->numHwLayers; i++) {
         hwc_layer_1_t* fb_layer = &contents->hwLayers[i];
 
@@ -198,7 +200,12 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
             (pdev->use_subsurface ? HWC_FRAMEBUFFER : HWC_OVERLAY))
             fb_layer->compositionType =
                 (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER);
-        update_cursor_surface(pdev, fb_layer, i);
+        foundCursorLayer |= update_cursor_surface(pdev, fb_layer, i);
+    }
+    if(!foundCursorLayer && pdev->display->mouse_icon_addr != -1){
+        wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
+        pdev->display->mouse_icon_addr = -1;
+        ALOGI("wayland cursor hidden");
     }
 
     return 0;
@@ -1260,7 +1267,7 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
         return -ENODEV;
     }
     ALOGE("wayland display %p", pdev->display);
-    pdev->display->cursor_layer_handle = 0;
+    pdev->display->mouse_icon_addr = -1;
 
     pthread_mutex_init(&pdev->vsync_lock, NULL);
     pdev->vsync_callback_enabled = true;
