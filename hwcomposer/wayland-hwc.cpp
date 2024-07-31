@@ -862,8 +862,10 @@ pointer_handle_enter(void *data, struct wl_pointer *pointer,
     display->pointer_surface = surface;
     if (display->cursor_surface){
         display->serial = serial;
+        int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
+        int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
         wl_pointer_set_cursor(pointer, serial,
-                              display->cursor_surface, 0, 0);
+                              display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
     }
 }
 
@@ -873,10 +875,12 @@ pointer_handle_leave(void *data, struct wl_pointer *pointer,
 {
     struct display *display = (struct display *)data;
     display->pointer_surface = NULL;
+    display->mouse_icon_addr = -1;
     if (display->cursor_surface){
         wl_pointer_set_cursor(pointer, serial, NULL, 0, 0);
     }
 }
+
 
 
 static bool
