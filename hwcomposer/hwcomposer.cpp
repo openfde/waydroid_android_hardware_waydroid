@@ -41,6 +41,8 @@
 #include <gralloc_handle.h>
 #include <cros_gralloc/cros_gralloc_handle.h>
 
+#include <gralloc_cb_bp.h>
+
 #define ATRACE_TAG ATRACE_TAG_GRAPHICS
 #include <cutils/trace.h>
 #include <utils/Trace.h>
@@ -293,6 +295,14 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
             update_shm_buffer(pdev->display, buf);
         }
+    } else if (pdev->display->gtype == GRALLOC_RANCHU) {
+        struct cb_handle_t* cb_handle = (struct cb_handle_t*)layer->handle;
+        auto width = cb_handle->width;
+        auto height = cb_handle->height;
+        auto hal_format = cb_handle->format;
+        ret = create_shm_wl_buffer(pdev->display, buf, width, height, hal_format,
+                                  pixel_stride, layer->handle);
+        update_shm_buffer(pdev->display, buf);
     } else if (pdev->display->gtype == GRALLOC_CROS) {
         const struct cros_gralloc_handle *cros_handle = (const struct cros_gralloc_handle *)layer->handle;
         if (pdev->display->dmabuf) {
@@ -540,15 +550,15 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 
 
     /*
-     * In prop "persist.waydroid.multi_windows" we detect HWC let SF rander layers 
+     * In prop "persist.waydroid.multi_windows" we detect HWC let SF rander layers
      * And just show the target client layer (single windows mode) or
      * render each layers in wayland surface and subsurfaces.
      * In prop "waydroid.active_apps" we choose what to be shown in window
      * and here if HWC is in single mode we show the screen only if any task are in screen
      * and in multi windows mode we group layers with same task ID in a wayland window.
      * And in prop "waydroid.blacklist_apps" we select apps to not show in display.
-     * 
-     * "waydroid.active_apps" prop can be: 
+     *
+     * "waydroid.active_apps" prop can be:
      * "none": No windows
      * "Waydroid": Shows android screen in a single window
      * "AppID": Shows apps in related windows as explained above
@@ -608,7 +618,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             if (layer_name.substr(0, 4) == "TID:") {
                 std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
                 std::string layer_aid = layer_name.substr(layer_name.find('#') + 1, layer_name.find('/') - layer_name.find('#') - 1);
-                
+
                 std::istringstream iss(blacklist_apps);
                 std::string app;
                 while (std::getline(iss, app, ':')) {
@@ -744,7 +754,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             continue;
         }
 
-        if (fb_layer->compositionType != 
+        if (fb_layer->compositionType !=
             (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER_TARGET) && layer == l) {
             if (fb_layer->acquireFenceFd != -1) {
                 close(fb_layer->acquireFenceFd);

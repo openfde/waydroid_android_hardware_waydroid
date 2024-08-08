@@ -79,7 +79,8 @@ enum {
     GRALLOC_GBM,
     GRALLOC_CROS,
     GRALLOC_X100,
-    GRALLOC_DEFAULT
+    GRALLOC_DEFAULT,
+    GRALLOC_RANCHU,
 };
 
 #define MAX_TOUCHPOINTS 10
@@ -195,7 +196,7 @@ struct buffer {
     int size;
 };
 
-typedef struct 
+typedef struct
 {
 	native_handle_t base;
 	int fd[3];

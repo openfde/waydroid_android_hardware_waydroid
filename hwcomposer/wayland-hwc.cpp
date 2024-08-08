@@ -242,7 +242,7 @@ create_dmabuf_wl_buffer(struct display *display, struct buffer *buffer,
     return 0;
 }
 
-static int 
+static int
 ConvertHalFormatToShm(uint32_t hal_format) {
     uint32_t fmt;
 
@@ -544,7 +544,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         window->xdg_surface =
                 xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
         assert(window->xdg_surface);
-        
+
         xdg_surface_add_listener(window->xdg_surface,
                                      &xdg_surface_listener, window);
 
@@ -811,7 +811,7 @@ static void pointer_handle_button_to_touch_down(struct display *display) {
 
     if (ensure_pipe(display, INPUT_TOUCH))
         return;
-    
+
     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
         ALOGE("%s:%d error in touch clock_gettime: %s",
               __FILE__, __LINE__, strerror(errno));
@@ -837,7 +837,7 @@ static void pointer_handle_button_to_touch_up(struct display *display) {
 
     if (ensure_pipe(display, INPUT_TOUCH))
         return;
-    
+
     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
         ALOGE("%s:%d error in touch clock_gettime: %s",
               __FILE__, __LINE__, strerror(errno));
@@ -972,7 +972,7 @@ pointer_handle_motion(void *data, struct wl_pointer *,
         struct input_event event[5];
         struct timespec rt;
         unsigned int res, n = 0;
-    
+
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
                 __FILE__, __LINE__, strerror(errno));
@@ -2237,8 +2237,8 @@ registry_handle_global(void *data, struct wl_registry *registry,
                (strcmp(interface, "android_wlegl") == 0)) {
         d->android_wlegl = (struct android_wlegl*)wl_registry_bind(registry, id,
                 &android_wlegl_interface, 1);
-    } else if ((d->gtype == GRALLOC_GBM || d->gtype == GRALLOC_CROS || d->gtype == GRALLOC_X100 )  &&
-               (strcmp(interface, "zwp_linux_dmabuf_v1") == 0)) {
+    } else if ((d->gtype == GRALLOC_GBM || d->gtype == GRALLOC_CROS || d->gtype == GRALLOC_X100  ||
+        d->gtype == GRALLOC_RANCHU)  &&  (strcmp(interface, "zwp_linux_dmabuf_v1") == 0)) {
         if (version < 3)
             return;
         d->dmabuf = (struct zwp_linux_dmabuf_v1*)wl_registry_bind(registry, id,
@@ -2290,6 +2290,8 @@ get_gralloc_type(const char *gralloc)
         return GRALLOC_DEFAULT;
     } else if (strcmp(gralloc, "gbm") == 0) {
         return GRALLOC_GBM;
+    } else if (strcmp(gralloc, "ranchu") == 0) {
+    return GRALLOC_RANCHU;
     } else if (str_starts_with(gralloc, "minigbm_") == 0) {
         return GRALLOC_CROS;
     } else if (strcmp(gralloc, "ft2004") == 0) {
