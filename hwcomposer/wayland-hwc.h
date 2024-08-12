@@ -178,6 +178,9 @@ struct display {
     uint32_t serial;
     int64_t mouse_icon_addr;
     int additional_refresh_cursor_times;     //In order to get the final cursor shape
+    bool ctrl_key_pressed;
+    wl_fixed_t gesture_scale;
+    bool axis_simulation_two_finger_started;
 };
 
 struct buffer {
