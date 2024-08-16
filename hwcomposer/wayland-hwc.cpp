@@ -1001,6 +1001,9 @@ pointer_handle_motion(void *data, struct wl_pointer *,
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
         display->ptrPrvX = x;
         display->ptrPrvY = y;
+        if(property_get_bool("fde.inject_as_touch", false)){
+            return;
+        }
 
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
@@ -1048,6 +1051,9 @@ handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
         acc_x -= (int)acc_x;
         acc_y -= (int)acc_y;
 
+        if(property_get_bool("fde.inject_as_touch", false)){
+            return;
+        }
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
