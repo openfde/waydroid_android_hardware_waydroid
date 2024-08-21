@@ -776,20 +776,6 @@ keyboard_handle_leave(void *data, struct wl_keyboard *,
     }
 }
 
-static bool timer_active = false;
-
-void timer_cancel_pinch_zoom_task(struct display* display, unsigned int delay_milliseconds) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(delay_milliseconds));
-    if (timer_active) {
-        if(display->axis_simulation_two_finger_started){
-            handle_pinch_end(display, NULL, 0, 0, 0);
-            display->axis_simulation_two_finger_started = false;
-            display->gesture_scale = 300;
-        }
-        display->ctrl_key_pressed = 0;
-    }
-}
-
 
 static void
 keyboard_handle_key(void *data, struct wl_keyboard *,
@@ -800,22 +786,7 @@ keyboard_handle_key(void *data, struct wl_keyboard *,
         return;
     struct display* display = (struct display*)data;
     if (key == KEY_LEFTCTRL || key == KEY_RIGHTCTRL){
-        struct timespec rt;
-        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-            ALOGE("%s:%d error in touch clock_gettime: %s",
-                  __FILE__, __LINE__, strerror(errno));
-        }
-        if(state == 1){
-            timer_active = false;
-            display->ctrl_key_pressed = state;
-            display->lastCtrlKeyEventNanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
-        }else{
-            if((rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec - display->lastCtrlKeyEventNanoSeconds) > 10 * 1000 * 1000){
-                timer_active = true;
-                std::thread timer_thread(timer_cancel_pinch_zoom_task, display, 20);
-                timer_thread.detach();
-            }
-        }
+        display->ctrl_key_pressed = state;
     }
     send_key_event((struct display*)data, key, (enum wl_keyboard_key_state)state);
 }
@@ -918,7 +889,33 @@ pointer_handle_leave(void *data, struct wl_pointer *pointer,
     }
 }
 
+static void
+pointer_cancel_axis_to_two_finger_touch(struct display *display){
+    struct input_event event[6];
+    struct timespec rt;
+    unsigned int res, n = 0;
 
+    if (ensure_pipe(display, INPUT_TOUCH))
+        return;
+
+    display->axis_simulation_two_finger_started = false;
+    display->gesture_scale = 300;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+       ALOGE("%s:%d error in touch clock_gettime: %s",
+            __FILE__, __LINE__, strerror(errno));
+    }
+
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 1);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
+    if (res < sizeof(event))
+        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+}
 
 static bool
 pointer_cancel_axis_to_touch(struct display *display, bool fromAxisStopEvent, bool force)
@@ -985,8 +982,8 @@ pointer_handle_motion(void *data, struct wl_pointer *,
                       uint32_t, wl_fixed_t sx, wl_fixed_t sy)
 {
     struct display* display = (struct display*)data;
-    if(display->ctrl_key_pressed){
-        return;
+    if(display->axis_simulation_two_finger_started){
+        pointer_cancel_axis_to_two_finger_touch(display);
     }
     int x, y;
 
@@ -1044,8 +1041,8 @@ handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
         uint32_t, uint32_t, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t, wl_fixed_t)
 {
     struct display *display = (struct display *)data;
-    if(display->ctrl_key_pressed){
-        return;
+    if(display->axis_simulation_two_finger_started){
+        pointer_cancel_axis_to_two_finger_touch(display);
     }
 
     static double acc_x = 0;
@@ -1092,10 +1089,7 @@ pointer_handle_button(void *data, struct wl_pointer *,
     struct display* display = (struct display*)data;
     pointer_cancel_axis_to_touch(display, false, true);
     if(display->axis_simulation_two_finger_started){
-        handle_pinch_end(data, NULL, 0, 0, 0);
-        display->axis_simulation_two_finger_started = false;
-        display->gesture_scale = 300;
-        display->ctrl_key_pressed = 0;
+        pointer_cancel_axis_to_two_finger_touch(display);
     }
 
     // Left button convert to touch event, right button reserved mouse event
@@ -1259,6 +1253,9 @@ pointer_handle_axis(void *data, struct wl_pointer *,
             handle_pinch_update(data, NULL,0,0,0,display->gesture_scale,0);
             display->axis_simulation_two_finger_started = true;
         }else{
+            if(display->axis_simulation_two_finger_started){
+                pointer_cancel_axis_to_two_finger_touch(display);
+            }
             pointer_axis_to_touch(display, touchMove, axis == WL_POINTER_AXIS_VERTICAL_SCROLL);
         }
     }else{
@@ -1287,6 +1284,9 @@ static void
 pointer_handle_axis_stop(void *data, struct wl_pointer *, uint32_t, uint32_t)
 {
     struct display* display = (struct display*)data;
+    if(display->axis_simulation_two_finger_started){
+        pointer_cancel_axis_to_two_finger_touch(display);
+    }
     pointer_cancel_axis_to_touch(display, true, true);
 }
 
