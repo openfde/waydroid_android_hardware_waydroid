@@ -899,7 +899,7 @@ pointer_cancel_axis_to_two_finger_touch(struct display *display){
         return;
 
     display->axis_simulation_two_finger_started = false;
-    display->gesture_scale = 300;
+    display->gesture_scale = 260;
 
     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
        ALOGE("%s:%d error in touch clock_gettime: %s",
@@ -1240,10 +1240,10 @@ pointer_handle_axis(void *data, struct wl_pointer *,
     if(property_get_bool("fde.click_as_touch", false)){
         if(display->ctrl_key_pressed){
             if(touchMove > 0){
-                display->gesture_scale += 20;
+                display->gesture_scale += 15;
             }else{
-                display->gesture_scale -= 20;
-                if(display->gesture_scale < 20){
+                display->gesture_scale -= 15;
+                if(display->gesture_scale < 15){
                     display->gesture_scale = 5;
                 }
             }
@@ -1617,10 +1617,10 @@ static void handle_pinch_update(void *data, struct zwp_pointer_gesture_pinch_v1 
     double iscale = wl_fixed_to_double(scale);
     double irotation = 90;
 
-    int x0 = x - (100.0 * iscale * cos(irotation));
-    int y0 = y - (100.0 * iscale * sin(irotation));
-    int x1 = x + (100.0 * iscale * cos(irotation));
-    int y1 = y + (100.0 * iscale * sin(irotation));
+    int x0 = x - (240.0 * iscale * cos(irotation));
+    int y0 = y - (240.0 * iscale * sin(irotation));
+    int x1 = x + (240.0 * iscale * cos(irotation));
+    int y1 = y + (240.0 * iscale * sin(irotation));
 
     ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
     ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
@@ -2411,7 +2411,7 @@ create_display(const char *gralloc)
     display->task = IWaydroidTask::getService();
     display->isTouchDown = false;
     display->lastAxisEventNanoSeconds = 0;
-    display->gesture_scale = 300;
+    display->gesture_scale = 260;
     return display;
 }
 
