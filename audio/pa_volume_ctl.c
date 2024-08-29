@@ -237,57 +237,6 @@ static void get_master_mute_callback(pa_context *c, const pa_server_info *i, voi
         get_mute_callback, userdata));
 }
 
-static void get_input_devs_callback(pa_context *c, const pa_source_info *i, int is_last, void *userdata)
-{
-    if (is_last < 0) {
-        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
-        quit(1, userdata);
-        return;
-    }
-
-    if (is_last) {
-        drain(userdata);
-        return;
-    }
-
-    pa_assert(i);
-
-    if (i->ports == NULL) {
-        return;
-    }
-
-    pa_source_port_info **p;
-    char result[1024] = {0};
-    int count;
-    for (p = i->ports; *p; p++) {
-        if ((*p)->available != PA_PORT_AVAILABLE_NO) {
-            if (i->active_port && strcmp(i->active_port->name, (*p)->name) == 0) {
-                pa_volume_t volume = i->volume.values[0];
-                int vol = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
-                if (strlen(result) == 0) {
-                    sprintf(result, "%s %s=%s=%f=%d", i->name, (*p)->name, (*p)->description, vol / 100.0, i->mute);
-                } else {
-                    char *buf = pa_xstrdup(result);
-                    sprintf(result, "%s %s=%s=%f=%d;%s", i->name, (*p)->name, (*p)->description, vol / 100.0, i->mute, buf);
-                    pa_xfree(buf);
-                }
-            } else {
-                sprintf(result + strlen(result), "%s%s %s=%s",  count ? ";" : "", i->name, (*p)->name, (*p)->description);
-            }
-            count++;
-        }
-    }
-
-    if (((struct pa_callback_args *)userdata)->info) {
-        char info[1024] = {0};
-        sprintf(info, "%s;%s",	((struct pa_callback_args *)userdata)->info, result);
-        pa_xfree(((struct pa_callback_args *)userdata)->info);
-        ((struct pa_callback_args *)userdata)->info = pa_xstrdup(info);
-    } else {
-        ((struct pa_callback_args *)userdata)->info = pa_xstrdup(result);
-    }
-}
-
 static void get_output_devs_get_sink_info_callback(pa_context *c, const pa_sink_info *i, 
 int is_last, void *userdata)
 {
@@ -310,21 +259,33 @@ int is_last, void *userdata)
 
     pa_sink_port_info **p;
     char result[1024] = {0};
-    int count;
+    int count = 0;
     for (p = i->ports; *p; p++) {
         if ((*p)->available != PA_PORT_AVAILABLE_NO) {
             if (i->active_port && strcmp(i->active_port->name, (*p)->name) == 0) {
                 pa_volume_t volume = i->volume.values[0];
                 int vol = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
                 if (strlen(result) == 0) {
-                    sprintf(result, "%s %s=%s=%f=%d", i->name, (*p)->name, (*p)->description, vol / 100.0, i->mute);
+                    if (i->description) {
+                        sprintf(result, "%s %s=%s(%s)=%f=%d", i->name, (*p)->name, (*p)->description, i->description, vol / 100.0, i->mute);
+                    } else {
+                        sprintf(result, "%s %s=%s=%f=%d", i->name, (*p)->name, (*p)->description, vol / 100.0, i->mute);
+                    }
                 } else {
                     char *buf = pa_xstrdup(result);
-                    sprintf(result, "%s %s=%s=%f=%d;%s", i->name, (*p)->name, (*p)->description, vol / 100.0, i->mute, buf);
+                    if (i->description) {
+                        sprintf(result, "%s %s=%s(%s)=%f=%d;%s", i->name, (*p)->name, (*p)->description, i->description, vol / 100.0, i->mute, buf);
+                    } else {
+                        sprintf(result, "%s %s=%s=%f=%d;%s", i->name, (*p)->name, (*p)->description, vol / 100.0, i->mute, buf);
+                    }
                     pa_xfree(buf);
                 }
             } else {
-                sprintf(result + strlen(result), "%s%s %s=%s",	count ? ";" : "", i->name, (*p)->name, (*p)->description);
+                if (i->description) {
+                    sprintf(result + strlen(result), "%s%s %s=%s(%s)",	count ? ";" : "", i->name, (*p)->name, (*p)->description, i->description);
+                } else {
+                    sprintf(result + strlen(result), "%s%s %s=%s",	count ? ";" : "", i->name, (*p)->name, (*p)->description);
+                }
             }
             count++;
         }
@@ -357,28 +318,6 @@ static void get_output_devs_callback(pa_context *c, const pa_server_info *i, voi
     pa_operation_unref(pa_context_get_sink_info_list(c, get_output_devs_get_sink_info_callback, userdata));
 }
 
-static void set_input_dev_volume_callback(pa_context *c, const pa_source_info *i, int is_last, void *userdata)
-{
-    pa_cvolume cv;
-    if (is_last < 0) {
-        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
-        quit(1, userdata);
-        return;
-    }
-
-    if (is_last) {
-        return;
-    }
-
-    pa_assert(i);
-
-    cv = i->volume;
-    fill_volume(&cv, &((struct pa_callback_args *)userdata)->m_volume, i->channel_map.channels);
-
-    pa_operation_unref(pa_context_set_source_volume_by_name(c, ((struct pa_callback_args *)userdata)->source_name, &cv, 
-        simple_callback, userdata));
-}
-
 static void set_output_dev_volume_callback(pa_context *c, const pa_sink_info *i, int is_last, void *userdata)
 {
     pa_cvolume cv;
@@ -401,39 +340,7 @@ static void set_output_dev_volume_callback(pa_context *c, const pa_sink_info *i,
         &cv, simple_callback, userdata));
 }
 
-static void get_input_default_dev_info_callback(pa_context *c, const pa_source_info *i, 
-int is_last, void *userdata)
-{
-    if (is_last < 0) {
-        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
-        quit(1, userdata);
-        return;
-    }
-
-    if (is_last) {
-        drain(userdata);
-        return;
-    }
-
-    pa_assert(i);
-
-    if (i->ports == NULL) {
-        return;
-    }
-
-    char temp[1024] = {0};
-    if (i->active_port && strcmp(i->active_port->name, ((struct pa_callback_args *)userdata)->port_name) == 0) {
-        pa_volume_t volume = i->volume.values[0];
-        int vv = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
-        sprintf(temp, "%f=%d", vv / 100.0, i->mute);
-        ((struct pa_callback_args *)userdata)->info = pa_xstrdup(temp);
-        pa_operation_unref(pa_context_set_default_source(c, ((struct pa_callback_args *)userdata)->source_name, 
-            NULL, userdata));
-    }
-}
-
-static void get_output_default_dev_info_callback(pa_context *c, const pa_sink_info *i, 
-int is_last, void *userdata)
+static void get_output_default_dev_info_callback(pa_context *c, const pa_sink_info *i, int is_last, void *userdata)
 {
     if (is_last < 0) {
         ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
@@ -458,19 +365,7 @@ int is_last, void *userdata)
         int vol = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
         sprintf(info, "%f=%d", vol / 100.0, i->mute);
         ((struct pa_callback_args *)userdata)->info = pa_xstrdup(info);
-        pa_operation_unref(pa_context_set_default_sink(c, ((struct pa_callback_args *)userdata)->sink_name, 
-            NULL, userdata));
     }
-}
-
-static void set_input_default_dev_callback(pa_context *c, int success, void *userdata)
-{
-    if (!success) {
-        ALOGE("Failure: %s", pa_strerror(pa_context_errno(c)));
-        quit(1, userdata);
-        return;
-    }
-    pa_operation_unref(pa_context_get_source_info_list(c, get_input_default_dev_info_callback, userdata));
 }
 
 static void set_output_default_dev_callback(pa_context *c, int success, void *userdata)
@@ -481,6 +376,405 @@ static void set_output_default_dev_callback(pa_context *c, int success, void *us
         return;
     }
     pa_operation_unref(pa_context_get_sink_info_list(c, get_output_default_dev_info_callback, userdata));
+}
+
+static void set_output_default_dev_get_sink_info_callback(pa_context *c, const pa_sink_info *i, int is_last, void *userdata)
+{
+    if (is_last < 0) {
+        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+
+    if (is_last) {
+        if (((struct pa_callback_args *)userdata)->ret != 1) {
+            drain(userdata);
+        }
+        ((struct pa_callback_args *)userdata)->ret = 0;
+        return;
+    }
+
+    pa_assert(i);
+
+    if (i->ports == NULL) {
+        return;
+    }
+
+    pa_sink_port_info **p;
+    int count = 0;
+    for (p = i->ports; *p; p++) {
+        if ((*p)->available != PA_PORT_AVAILABLE_NO) {
+            count++;
+        }
+    }
+    if (count == 1) {
+        if (((struct pa_callback_args *)userdata)->need_info) {
+            pa_operation_unref(pa_context_set_default_sink(c, ((struct pa_callback_args *)userdata)->sink_name, set_output_default_dev_callback, userdata));
+        } else {
+            pa_operation_unref(pa_context_set_default_sink(c, ((struct pa_callback_args *)userdata)->sink_name, simple_callback, userdata));
+        }
+        ((struct pa_callback_args *)userdata)->ret = 1;
+    } else if (count > 1) {
+        if (((struct pa_callback_args *)userdata)->need_info) {
+            pa_operation_unref(pa_context_set_sink_port_by_name(c, ((struct pa_callback_args *)userdata)->sink_name,
+                ((struct pa_callback_args *)userdata)->port_name, set_output_default_dev_callback, userdata));
+        } else {
+            pa_operation_unref(pa_context_set_sink_port_by_name(c, ((struct pa_callback_args *)userdata)->sink_name,
+                ((struct pa_callback_args *)userdata)->port_name, simple_callback, userdata));
+        }
+        ((struct pa_callback_args *)userdata)->ret = 1;
+    }
+}
+
+static void get_card_info_get_input_devs_callback(pa_context *c, const pa_source_info *i, int is_last, void *userdata)
+{
+    if (is_last < 0) {
+        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+
+    if (is_last) {
+        drain(userdata);
+        return;
+    }
+
+    pa_assert(i);
+
+    if (i->ports == NULL) {
+        return;
+    }
+    const char *split_state = NULL;
+    const char *first_port_info = NULL;
+    const char *port_name = NULL;
+    char *n = NULL;
+    uint32_t info_count = 0;
+    first_port_info = pa_split(((struct pa_callback_args *)userdata)->info, ";", &split_state);
+    split_state = NULL;
+    while (n = pa_split(first_port_info, " ", &split_state)) {
+        info_count++;
+        if (info_count == 2) {
+            port_name = n;
+        } else {
+            pa_xfree(n);
+        }
+    }
+    pa_source_port_info **p;
+    for (p = i->ports; *p; p++) {
+        if (strcmp(port_name, (*p)->name)  == 0 && (*p)->available != PA_PORT_AVAILABLE_NO
+            && i->active_port && strcmp(i->active_port->name, (*p)->name) == 0) {
+            const char *splited_str[4] = {NULL};
+            uint32_t info_count2 = 0;
+            uint32_t port_count = 0;
+            split_state = NULL;
+            while ((n = pa_split(((struct pa_callback_args *)userdata)->info, ";", &split_state))) {
+                port_count++;
+                pa_xfree(n);
+            }
+            split_state = NULL;
+            while ((n = pa_split(first_port_info, " ", &split_state))) {
+                splited_str[info_count2] = n;
+                info_count2++;
+                if (info_count2 == 4) {
+                    break;
+                }
+            }
+            char info[1024] = {0};
+            pa_volume_t volume = i->volume.values[0];
+            int vol = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
+            sprintf(info, "%s=%f=%d%s", first_port_info, vol / 100.0, i->mute, ((struct pa_callback_args *)userdata)->info + strlen(first_port_info));
+            pa_xfree(((struct pa_callback_args *)userdata)->info);
+            ((struct pa_callback_args *)userdata)->info = pa_xstrdup(info);
+            if (info_count2 == 4 && port_count == 1) {
+                split_state = NULL;
+                const char *profile_to_switch = pa_split(splited_str[3], "=", &split_state);
+                sprintf(info, "%s;NONE%s %s=none=0.5=0", ((struct pa_callback_args *)userdata)->info, splited_str[0] + 2, profile_to_switch);
+                pa_xfree(profile_to_switch);
+                pa_xfree(((struct pa_callback_args *)userdata)->info);
+                ((struct pa_callback_args *)userdata)->info = pa_xstrdup(info);
+            }
+
+            int i;
+            for (i = 0; i < info_count2; i++) {
+                pa_xfree(splited_str[i]);
+            }
+        }
+    }
+    pa_xfree(first_port_info);
+    pa_xfree(port_name);
+}
+
+static void get_input_devs_get_card_info_callback(pa_context *c, const pa_card_info *i, int is_last, void *userdata)
+{
+    char t[32];
+    char *pl;
+
+    if (is_last < 0) {
+        ALOGE("(%d)Failed to get card information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+
+    if (is_last) {
+        if (((struct pa_callback_args *)userdata)->info && pa_startswith(((struct pa_callback_args *)userdata)->info, "$$")) {
+            pa_operation_unref(pa_context_get_source_info_list(c, get_card_info_get_input_devs_callback, userdata));
+        } else {
+            if (((struct pa_callback_args *)userdata)->info) {
+                char info[1024] = {0};
+                const char *split_state = NULL;
+                char *n = NULL;
+                uint32_t port_count = 0;
+                bool only_bt = false;
+                while ((n = pa_split(((struct pa_callback_args *)userdata)->info, ";", &split_state))) {
+                    port_count++;
+                    pa_xfree(n);
+                }
+                split_state = NULL;
+                while ((n = pa_split(((struct pa_callback_args *)userdata)->info, ";", &split_state))) {
+                    const char *split_state2 = NULL;
+                    uint32_t info_count = 0;
+                    char *n2 = NULL;
+                    const char *splited_str[4] = {NULL};
+                    while ((n2 = pa_split(n, " ", &split_state2))) {
+                        splited_str[info_count] = n2;
+                        info_count++;
+                        if (info_count == 4) {
+                            break;
+                        }
+                    }
+                    if (port_count == 1 && info_count == 4) {
+                        split_state = NULL;
+                        const char *profile_to_switch  = pa_split(splited_str[3], "=", &split_state);
+                        sprintf(info, "NONE%s %s=none=0.5=0;%s", splited_str[0], profile_to_switch, ((struct pa_callback_args *)userdata)->info);
+                        pa_xfree(profile_to_switch);
+                        pa_xfree(((struct pa_callback_args *)userdata)->info);
+                        ((struct pa_callback_args *)userdata)->info = pa_xstrdup(info);
+                        only_bt = true;
+                    }
+                    int i;
+                    for (i = 0; i < 4; i++) {
+                        pa_xfree(splited_str[i]);
+                    }
+                    pa_xfree(n);
+                    if (only_bt) {
+                        break;
+                    }
+                }
+                if (!only_bt) {
+                    ALOGE("(%d)maybe to do!!!", __LINE__);
+                }
+            } else {
+                ((struct pa_callback_args *)userdata)->info = pa_xstrdup("NONENONE=none=0.5=0");
+            }
+            drain(userdata);
+        }
+        return;
+    }
+
+    pa_assert(i);
+
+    if (i->ports == NULL) {
+        return;
+    }
+
+    pa_card_port_info **p;
+    char result[1024] = {0};
+    int count = 0;
+    int active_profile_count = 0;
+    for (p = i->ports; *p; p++) {
+        if ((*p)->available != PA_PORT_AVAILABLE_NO && (*p)->direction == PA_DIRECTION_INPUT) {
+            const char *profile_to_switch;
+            pa_card_profile_info **pr = (*p)->profiles;
+            const char *device_bus = pa_proplist_gets(i->proplist, "device.bus");
+            bool bluetooth = device_bus && strcmp(device_bus, "bluetooth") == 0;
+
+            if (bluetooth) {
+                pa_card_profile_info2 **p2;
+                for (p2 = i->profiles2; *p2; p2++) {
+                    if ((*p2)->name && strcmp((*p2)->name, (*pr)->name) != 0 && strcmp((*p2)->name, "off") != 0) {
+                        profile_to_switch = (*p2)->name;
+                        break;
+                    }
+                }
+            }
+            const char *device_description = pa_proplist_gets(i->proplist, "device.description");
+            if (i->active_profile->name && strcmp((*pr)->name, i->active_profile->name) == 0) {
+                active_profile_count++;
+                if (strlen(result) == 0) {
+                    if (device_description) {
+                        sprintf(result, "%s%s %s %s%s%s=%s(%s)", active_profile_count == 1 ? "$$" : "", i->name, (*p)->name, (*pr)->name,
+                            profile_to_switch ? " " : "", profile_to_switch ? profile_to_switch : "", (*p)->description, device_description);
+                    } else {
+                        sprintf(result, "%s%s %s %s%s%s=%s", active_profile_count == 1 ? "$$" : "", i->name, (*p)->name, (*pr)->name, 
+                            profile_to_switch ? " " : "", profile_to_switch ? profile_to_switch : "", (*p)->description);
+                    }
+                } else {
+                    char *buf = pa_xstrdup(result);
+                    if (device_description) {
+                        sprintf(result, "%s%s %s %s%s%s=%s(%s);%s", active_profile_count == 1 ? "$$" : "", i->name, (*p)->name, (*pr)->name, 
+                            profile_to_switch ? " " : "", profile_to_switch ? profile_to_switch : "", (*p)->description, device_description, buf);
+                    } else {
+                        sprintf(result, "%s%s %s %s%s%s=%s;%s", active_profile_count == 1 ? "$$" : "", i->name, (*p)->name, (*pr)->name, 
+                            profile_to_switch ? " " : "", profile_to_switch ? profile_to_switch : "", (*p)->description, buf);
+                    }
+                    pa_xfree(buf);
+                }
+            } else {
+                pa_card_profile_info **tmp_pr = pr;
+                const char *better_profile = NULL;
+                if (tmp_pr) {
+                    better_profile = (*tmp_pr)->name;
+                    tmp_pr++;
+                    while (*tmp_pr) {
+                        if (strrchr((*tmp_pr)->name, '+')) {
+                            better_profile = (*tmp_pr)->name;
+                            break;
+                        }
+                        tmp_pr++;
+                    }
+                }
+                if (device_description) {
+                    sprintf(result + strlen(result), "%s%s %s %s%s%s=%s(%s)",	count ? ";" : "", i->name, (*p)->name, better_profile, 
+                        profile_to_switch ? " " : "", profile_to_switch ? profile_to_switch : "", (*p)->description, device_description);
+                } else {
+                    sprintf(result + strlen(result), "%s%s %s %s%s%s=%s",	count ? ";" : "", i->name, (*p)->name, better_profile,
+                        profile_to_switch ? " " : "", profile_to_switch ? profile_to_switch : "", (*p)->description);
+                }
+            }
+            count++;
+        }
+    }
+    if ((strlen(result) != 0)) {
+        if (((struct pa_callback_args *)userdata)->info) {
+            char info[1024] = {0};
+            bool find_actived_profile = pa_startswith(result, "$$");
+            sprintf(info, "%s;%s",	find_actived_profile ? result : ((struct pa_callback_args *)userdata)->info, find_actived_profile ? ((struct pa_callback_args *)userdata)->info : result);
+            pa_xfree(((struct pa_callback_args *)userdata)->info);
+            ((struct pa_callback_args *)userdata)->info = pa_xstrdup(info);
+        } else {
+            ((struct pa_callback_args *)userdata)->info = pa_xstrdup(result);
+        }
+    }
+}
+
+static void get_input_default_dev_get_source_info_list_callback(pa_context *c, const pa_source_info *i, int is_last, void *userdata)
+{
+    if (is_last < 0) {
+        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+
+    if (is_last) {
+        if (((struct pa_callback_args *)userdata)->ret != 1) {
+            drain(userdata);
+        }
+        ((struct pa_callback_args *)userdata)->ret = 0;
+        return;
+    }
+
+    pa_assert(i);
+
+    if (i->ports == NULL) {
+        return;
+    }
+
+    const char *bus_or_mac = strchr(((struct pa_callback_args *)userdata)->source_name, '.');
+    if (!bus_or_mac) {
+        ALOGE("(%d)args error", __LINE__);
+        quit(1, userdata);
+        return;
+    }
+    if (i->name && strstr(i->name, bus_or_mac)) {
+        pa_volume_t volume = i->volume.values[0];
+        int vv = (int)(((uint64_t)volume * 100 + (uint64_t)PA_VOLUME_NORM / 2) / (uint64_t)PA_VOLUME_NORM);
+        char temp[1024] = {0};
+        sprintf(temp, "%f=%d", vv / 100.0, i->mute);
+        ((struct pa_callback_args *)userdata)->info = pa_xstrdup(temp);
+        pa_operation_unref(pa_context_set_default_source(c, i->name, simple_callback, userdata));
+        ((struct pa_callback_args *)userdata)->ret = 1;
+    }
+}
+
+static void set_input_default_dev_set_card_profile_by_name_callback(pa_context *c, int success, void *userdata)
+{
+    if (!success) {
+        ALOGE("(%d)Failure: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+    pa_operation_unref(pa_context_get_source_info_list(c, get_input_default_dev_get_source_info_list_callback, userdata));
+}
+
+static void set_input_vol_get_source_info_list_callback(pa_context *c, const pa_source_info *i, int is_last, void *userdata)
+{
+    if (is_last < 0) {
+        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+
+    if (is_last) {
+        if (((struct pa_callback_args *)userdata)->ret != 1) {
+            drain(userdata);
+        }
+        ((struct pa_callback_args *)userdata)->ret = 0;
+        return;
+    }
+
+    pa_assert(i);
+
+    if (i->ports == NULL) {
+        return;
+    }
+
+    const char *bus_or_mac = strchr(((struct pa_callback_args *)userdata)->source_name, '.');
+    if (!bus_or_mac) {
+        ALOGE("(%d)args error", __LINE__);
+        quit(1, userdata);
+        return;
+    }
+    if (i->name && strstr(i->name, bus_or_mac) && i->active_port && strcmp(i->active_port->name, ((struct pa_callback_args *)userdata)->port_name) == 0) {
+        pa_cvolume cv = i->volume;
+        fill_volume(&cv, &((struct pa_callback_args *)userdata)->m_volume, i->channel_map.channels);
+        pa_operation_unref(pa_context_set_source_volume_by_name(c, i->name, &cv, simple_callback, userdata));
+        ((struct pa_callback_args *)userdata)->ret = 1;
+    }
+}
+
+static void set_input_mute_get_source_info_list_callback(pa_context *c, const pa_source_info *i, int is_last, void *userdata)
+{
+    if (is_last < 0) {
+        ALOGE("(%d)Failed to get source information: %s", __LINE__, pa_strerror(pa_context_errno(c)));
+        quit(1, userdata);
+        return;
+    }
+
+    if (is_last) {
+        if (((struct pa_callback_args *)userdata)->ret != 1) {
+            drain(userdata);
+        }
+        ((struct pa_callback_args *)userdata)->ret = 0;
+        return;
+    }
+
+    pa_assert(i);
+
+    if (i->ports == NULL) {
+        return;
+    }
+
+    const char *bus_or_mac = strchr(((struct pa_callback_args *)userdata)->source_name, '.');
+    if (!bus_or_mac) {
+        ALOGE("(%d)args error", __LINE__);
+        quit(1, userdata);
+        return;
+    }
+
+    if (i->name && strstr(i->name, bus_or_mac) && i->active_port && strcmp(i->active_port->name, ((struct pa_callback_args *)userdata)->port_name) == 0) {
+        pa_operation_unref(pa_context_set_source_mute_by_name(c, i->name, ((struct pa_callback_args *)userdata)->muted, simple_callback, userdata));
+        ((struct pa_callback_args *)userdata)->ret = 1;
+    }
 }
 
 static void context_state_callback(pa_context *c, void *userdata)
@@ -513,41 +807,39 @@ static void context_state_callback(pa_context *c, void *userdata)
                     o = pa_context_get_server_info(c, get_master_mute_callback, userdata);
                     break;
                 case GET_INPUT_DEVS:
-                    o = pa_context_get_source_info_list(c, get_input_devs_callback, userdata);
+					o = pa_context_get_card_info_list(c, get_input_devs_get_card_info_callback, userdata);
                     break;
                 case GET_OUTPUT_DEVS:
                     o = pa_context_get_server_info(c, get_output_devs_callback, userdata);
                     break;
                 case SET_INPUT_DEV_VOLUME:
-                    o = pa_context_get_source_info_by_name(c, 
-                            ((struct pa_callback_args *)userdata)->source_name, 
-                            set_input_dev_volume_callback, userdata);
+					o = pa_context_get_source_info_list(c, set_input_vol_get_source_info_list_callback, userdata);
                     break;
                 case SET_OUTPUT_DEV_VOLUME:
-                    o = pa_context_get_sink_info_by_name(c, 
-                            ((struct pa_callback_args *)userdata)->sink_name, 
+                    o = pa_context_get_sink_info_by_name(c, ((struct pa_callback_args *)userdata)->sink_name, 
                             set_output_dev_volume_callback, userdata);
                     break;
                 case SET_INPUT_DEV_MUTE:
-                    o = pa_context_set_source_mute_by_name(c, 
-                            ((struct pa_callback_args *)userdata)->source_name, 
-                            ((struct pa_callback_args *)userdata)->muted, 
-                            simple_callback, userdata);
+					o = pa_context_get_source_info_list(c, set_input_mute_get_source_info_list_callback, userdata);
                     break;
                 case SET_OUTPUT_DEV_MUTE:
-                    o = pa_context_set_sink_mute_by_name(c, 
-                            ((struct pa_callback_args *)userdata)->sink_name, 
-                            ((struct pa_callback_args *)userdata)->muted, 
-                            simple_callback, userdata);
+                    o = pa_context_set_sink_mute_by_name(c, ((struct pa_callback_args *)userdata)->sink_name, 
+                            ((struct pa_callback_args *)userdata)->muted, simple_callback, userdata);
                     break;
                 case SET_INPUT_DEFAULT_DEV: {
-                    o = pa_context_set_source_port_by_name(c, ((struct pa_callback_args *)userdata)->source_name, 
-                            ((struct pa_callback_args *)userdata)->port_name, set_input_default_dev_callback, userdata);
+                    bool is_none = ((struct pa_callback_args *)userdata)->ret;
+                    if (is_none) {
+                        ((struct pa_callback_args *)userdata)->info = pa_xstrdup("0.5=0");
+                    }
+                    o = pa_context_set_card_profile_by_name(c, ((struct pa_callback_args *)userdata)->source_name, 
+                            ((struct pa_callback_args *)userdata)->port_name, is_none ? simple_callback :
+                            set_input_default_dev_set_card_profile_by_name_callback, userdata);
                     break;
 				}
                 case SET_OUTPUT_DEFAULT_DEV:
-                    o = pa_context_set_sink_port_by_name(c, ((struct pa_callback_args *)userdata)->sink_name, 
-                            ((struct pa_callback_args *)userdata)->port_name, set_output_default_dev_callback, userdata);
+                    o = pa_context_get_sink_info_by_name(c, ((struct pa_callback_args *)userdata)->sink_name, 
+                            set_output_default_dev_get_sink_info_callback, userdata);
+                    ((struct pa_callback_args *)userdata)->ret = 0;
                     break;
                 default:
                     pa_assert_not_reached();
@@ -626,19 +918,43 @@ static int pa_set_dev_volume(bool input, const char *dev_name, float volume)
 {
     struct pa_callback_args callback_args;
     const char *split_state = NULL;
-    char *name = NULL;
-    name = pa_split(dev_name, " ", &split_state);
-    if (name[0] != '\0') {
-        if (input) {
-            callback_args.source_name = pa_xstrdup(name);
-        } else {
-            callback_args.sink_name = pa_xstrdup(name);
+    char *n = NULL;
+    int split_count = 0;
+    if (input) {
+        if (!dev_name) {
+            return -1;
         }
-        pa_xfree(name);
+        char card_profile[256] = {0};
+        split_state = NULL;
+        if (strncmp(dev_name, "NONE", strlen("NONE")) == 0) {
+            return 0;
+        } else {
+            bool have_actived = strncmp(dev_name, "$$", strlen("$$")) == 0;
+            if (have_actived) {
+                sprintf(card_profile, "%s", dev_name + strlen("$$"));
+            }
+            while ((n = pa_split(have_actived ? card_profile : dev_name, " ", &split_state))) {
+                if (split_count == 0) {
+                    callback_args.source_name = n;
+                } else if (split_count == 1) {
+                    callback_args.port_name = n;
+                } else {
+                    pa_xfree(n);
+                    break;
+                }
+                split_count++;
+            }
+        }
     } else {
-        pa_xfree(name);
-        ALOGE("parse dev_name fail");
-        return -1;
+        char *name = NULL;
+        name = pa_split(dev_name, " ", &split_state);
+        if (name[0] != '\0') {
+            callback_args.sink_name = name;
+        } else {
+            pa_xfree(name);
+            ALOGE("parse dev_name fail");
+            return -1;
+        }
     }
 
     callback_args.m_volume.channels = 1;
@@ -650,20 +966,46 @@ static int pa_set_dev_mute(bool input, const char *dev_name, bool mute)
 {
     struct pa_callback_args callback_args;
     const char *split_state = NULL;
-    char *name = NULL;
-    name = pa_split(dev_name, " ", &split_state);
-    if (name[0] != '\0') {
-        if (input) {
-            callback_args.source_name = pa_xstrdup(name);
-        } else {
-            callback_args.sink_name = pa_xstrdup(name);
+    char *n = NULL;
+    int split_count = 0;
+
+    if (input) {
+        if (!dev_name) {
+            return -1;
         }
-        pa_xfree(name);
+        char card_profile[256] = {0};
+        split_state = NULL;
+        if (strncmp(dev_name, "NONE", strlen("NONE")) == 0) {
+            return 0;
+        } else {
+            bool have_actived = strncmp(dev_name, "$$", strlen("$$")) == 0;
+            if (have_actived) {
+                sprintf(card_profile, "%s", dev_name + strlen("$$"));
+            }
+            while ((n = pa_split(have_actived ? card_profile : dev_name, " ", &split_state))) {
+                if (split_count == 0) {
+                    callback_args.source_name = n;
+                } else if (split_count == 1) {
+                    callback_args.port_name = n;
+                } else {
+                    pa_xfree(n);
+                    break;
+                }
+                split_count++;
+            }
+        }
     } else {
-        pa_xfree(name);
-        ALOGE("parse dev_name fail");
-        return -1;
+        char *name = NULL;
+        name = pa_split(dev_name, " ", &split_state);
+        if (name[0] != '\0') {
+            callback_args.sink_name = name;
+        } else {
+            pa_xfree(name);
+            ALOGE("parse dev_name fail");
+            return -1;
+        }
     }
+
     callback_args.muted = mute;
     return pa_process(input ? SET_INPUT_DEV_MUTE : SET_OUTPUT_DEV_MUTE, &callback_args);
 }
@@ -675,17 +1017,64 @@ static char *pa_set_default_dev(bool input, const char *dev_name, bool need_info
     const char *split_state = NULL;
     char *n = NULL;
     int split_count = 0;
-    while ((n = pa_split(dev_name, " ", &split_state))) {
-        if (split_count == 0) {
-            if (input) {
-                callback_args.source_name = n;
-            } else {
-                callback_args.sink_name = n;
-            }
-        } else {
-            callback_args.port_name = n;
+    bool is_none = false;
+
+    if (input) {
+        if (!dev_name) {
+            return pa_xstrdup("1");
         }
-        split_count++;
+        char card_profile[256] = {0};
+        split_state = NULL;
+        if (strncmp(dev_name, "NONENONE", strlen("NONENONE")) == 0) {
+            return pa_xstrdup(need_info ? "0.5=0" : "0");
+        } else if (strncmp(dev_name, "NONE", strlen("NONE")) == 0) {
+            sprintf(card_profile, "%s", dev_name + strlen("NONE"));
+            while ((n = pa_split(card_profile, " ", &split_state))) {
+                if (split_count == 0) {
+                    callback_args.source_name = n;
+                } else if (split_count == 1) {
+                    callback_args.port_name = n;
+                } else {
+                    pa_xfree(n);
+                    ALOGE("(%d): %s", __LINE__, "more args!!");
+                    break;
+                }
+                split_count++;
+            }
+            callback_args.ret = 1;
+            is_none = true;
+        } else {
+            bool have_actived = strncmp(dev_name, "$$", strlen("$$")) == 0;
+            if (have_actived) {
+                sprintf(card_profile, "%s", dev_name + strlen("$$"));
+            }
+            while ((n = pa_split(have_actived ? card_profile : dev_name, " ", &split_state))) {
+                if (split_count == 0) {
+                    callback_args.source_name = n;
+                } else if (split_count == 1) {
+                    pa_xfree(n);
+                } else if (split_count == 2) {
+                    callback_args.port_name = n;
+                } else {
+                    pa_xfree(n);
+                    break;
+                }
+                split_count++;
+            }
+        }
+    } else {
+        while ((n = pa_split(dev_name, " ", &split_state))) {
+            if (split_count == 0) {
+                callback_args.sink_name = n;
+            } else if (split_count == 1) {
+                callback_args.port_name = n;
+            } else {
+                pa_xfree(n);
+                ALOGE("(%d): %s", __LINE__, "more args!!");
+                break;
+            }
+            split_count++;
+        }
     }
     int ret = pa_process(input ? SET_INPUT_DEFAULT_DEV : SET_OUTPUT_DEFAULT_DEV, &callback_args);
     return ret ? pa_xstrdup("1") : callback_args.need_info ? callback_args.info : pa_xstrdup("0");
