@@ -1022,7 +1022,8 @@ pointer_handle_motion(void *data, struct wl_pointer *,
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
         display->ptrPrvX = x;
         display->ptrPrvY = y;
-        if(property_get_bool("fde.inject_as_touch", false)){
+        bool near_bord = x <= 10 || y <= 10 || x >= display->width - 10 || y >= display->height - 10;
+        if(property_get_bool("fde.inject_as_touch", false) && !near_bord){
             return;
         }
 
