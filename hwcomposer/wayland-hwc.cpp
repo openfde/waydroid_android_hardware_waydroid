@@ -875,6 +875,8 @@ pointer_handle_enter(void *data, struct wl_pointer *pointer,
         wl_pointer_set_cursor(pointer, serial,
                               display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
     }
+    //When the cursor is hidden, it will trigger a new hide request in hwcomposer's hwc_prepare.
+    display->mouse_icon_addr = 0;
 }
 
 static void
