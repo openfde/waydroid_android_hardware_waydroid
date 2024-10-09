@@ -2,11 +2,11 @@
 #define AIDL_GENERATED_LINEAGEOS_WAYDROID_BN_PLATFORM_H_
 
 #include <binder/IInterface.h>
-#include <lineageos/waydroid/IPlatform.h>
+#include <android/openfde/IPlatform.h>
 
-namespace lineageos {
+namespace android {
 
-namespace waydroid {
+namespace openfde {
 
 class BnPlatform : public ::android::BnInterface<IPlatform> {
 public:

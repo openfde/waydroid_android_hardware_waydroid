@@ -1,11 +1,11 @@
-#include <lineageos/waydroid/IPlatform.h>
-#include <lineageos/waydroid/BpPlatform.h>
+#include <android/openfde/IPlatform.h>
+#include <android/openfde/BpPlatform.h>
 
-namespace lineageos {
+namespace android {
 
-namespace waydroid {
+namespace openfde {
 
-IMPLEMENT_META_INTERFACE(Platform, "lineageos.waydroid.IPlatform")
+IMPLEMENT_META_INTERFACE(Platform, "android.openfde.IPlatform")
 
 ::android::IBinder* IPlatformDefault::onAsBinder() {
   return nullptr;
@@ -18,13 +18,13 @@ IMPLEMENT_META_INTERFACE(Platform, "lineageos.waydroid.IPlatform")
 }  // namespace waydroid
 
 }  // namespace lineageos
-#include <lineageos/waydroid/BpPlatform.h>
+#include <android/openfde/BpPlatform.h>
 #include <binder/Parcel.h>
 #include <android-base/macros.h>
 
-namespace lineageos {
+namespace android {
 
-namespace waydroid {
+namespace openfde {
 
 BpPlatform::BpPlatform(const ::android::sp<::android::IBinder>& _aidl_impl)
     : BpInterface<IPlatform>(_aidl_impl){
@@ -66,12 +66,12 @@ BpPlatform::BpPlatform(const ::android::sp<::android::IBinder>& _aidl_impl)
 }  // namespace waydroid
 
 }  // namespace lineageos
-#include <lineageos/waydroid/BnPlatform.h>
+#include <android/openfde/BnPlatform.h>
 #include <binder/Parcel.h>
 
-namespace lineageos {
+namespace android {
 
-namespace waydroid {
+namespace openfde {
 
 ::android::status_t BnPlatform::onTransact(uint32_t _aidl_code, const ::android::Parcel& _aidl_data, ::android::Parcel* _aidl_reply, uint32_t _aidl_flags) {
   ::android::status_t _aidl_ret_status = ::android::OK;
