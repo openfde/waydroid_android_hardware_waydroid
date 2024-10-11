@@ -7,9 +7,9 @@
 #include <utils/String16.h>
 #include <utils/StrongPointer.h>
 
-namespace lineageos {
+namespace android {
 
-namespace waydroid {
+namespace openfde {
 
 class IPlatform : public ::android::IInterface {
 public:

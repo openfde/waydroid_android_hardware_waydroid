@@ -63,7 +63,7 @@ Return<void> WaydroidTask::removeAllVisibleRecentTasks() {
 Return<void> WaydroidTask::getAppName(const hidl_string& packageName, getAppName_cb _hidl_cb) {
     android::String16 AppName;
     if (mPlatform == nullptr) {
-        sp<IBinder> binderPlatform = android::defaultServiceManager()->getService(android::String16("waydroidplatform"));
+        sp<IBinder> binderPlatform = android::defaultServiceManager()->getService(android::String16("openfdeplatform"));
         if (binderPlatform != nullptr)
             mPlatform = android::interface_cast<IPlatform>(binderPlatform);
     }

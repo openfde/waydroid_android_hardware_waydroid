@@ -23,7 +23,7 @@
 #include <hidl/Status.h>
 
 #include <android/app/IActivityTaskManager.h>
-#include <lineageos/waydroid/IPlatform.h>
+#include <android/openfde/IPlatform.h>
 
 namespace vendor {
 namespace waydroid {
@@ -41,7 +41,7 @@ using ::android::sp;
 using ::android::IBinder;
 
 using ::android::app::IActivityTaskManager;
-using ::lineageos::waydroid::IPlatform;
+using ::android::openfde::IPlatform;
 
 struct WaydroidTask : public IWaydroidTask {
     // Methods from ::vendor::waydroid::task::V1_0::IWaydroidTask follow.

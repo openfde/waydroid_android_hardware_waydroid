@@ -4,11 +4,11 @@
 #include <binder/IBinder.h>
 #include <binder/IInterface.h>
 #include <utils/Errors.h>
-#include <lineageos/waydroid/IPlatform.h>
+#include <android/openfde/IPlatform.h>
 
-namespace lineageos {
+namespace android {
 
-namespace waydroid {
+namespace openfde {
 
 class BpPlatform : public ::android::BpInterface<IPlatform> {
 public:
