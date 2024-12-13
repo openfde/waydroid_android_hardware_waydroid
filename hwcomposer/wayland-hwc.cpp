@@ -555,8 +555,8 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         assert(window->xdg_toplevel);
         xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window);
         if (display->isMaximized || !display->height || !display->width) {
-            xdg_toplevel_set_maximized(window->xdg_toplevel);
             xdg_toplevel_set_fullscreen(window->xdg_toplevel,NULL);
+            xdg_toplevel_set_maximized(window->xdg_toplevel);
 	}
         const hidl_string appID_hidl(appID);
         hidl_string appName_hidl(appID);
