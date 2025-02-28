@@ -560,14 +560,15 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
 	}
         const hidl_string appID_hidl(appID);
         hidl_string appName_hidl(appID);
-        if (appID != "Waydroid" && display->task)
+	//rename the appid to Openfde to match the desktop file name openfde.desktop 
+        if (appID != "Openfde" && display->task)
             display->task->getAppName(appID_hidl, [&](const hidl_string &value)
                                       { xdg_toplevel_set_title(window->xdg_toplevel, value.c_str()); });
         else
             xdg_toplevel_set_title(window->xdg_toplevel, appID.c_str());
 
-        if (appID != "Waydroid")
-            appID = "waydroid." + appID;
+        if (appID != "Openfde")
+            appID = "openfde." + appID;
         xdg_toplevel_set_app_id(window->xdg_toplevel, appID.c_str());
     } else if (display->shell) {
         window->shell_surface =
@@ -580,7 +581,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
             wl_shell_surface_set_maximized(window->shell_surface, display->output);
         const hidl_string appID_hidl(appID);
         hidl_string appName_hidl(appID);
-        if (appID != "Waydroid" && display->task)
+        if (appID != "Openfde" && display->task)
             display->task->getAppName(appID_hidl, [&](const hidl_string &value)
                                       { wl_shell_surface_set_title(window->shell_surface, value.c_str()); });
         else

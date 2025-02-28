@@ -42,8 +42,8 @@ Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
     if (!mDisplay->wm_base)
         return false;
 
-    property_get("waydroid.active_apps", property, "Waydroid");
-    if (!strcmp(property, "Waydroid"))
+    property_get("waydroid.active_apps", property, "Openfde");
+    if (!strcmp(property, "Openfde"))
         return false;
 
     std::scoped_lock lock(mDisplay->windowsMutex);
@@ -68,9 +68,9 @@ Return<void> WaydroidWindow::setPointerCapture(const hidl_string& packageName, b
     if (!mDisplay->pointer)
         return Void();
 
-    property_get("waydroid.active_apps", property, "Waydroid");
-    if (!strcmp(property, "Waydroid"))
-        windowName = "Waydroid";
+    property_get("waydroid.active_apps", property, "Openfde");
+    if (!strcmp(property, "Openfde"))
+        windowName = "Openfde";
 
     std::scoped_lock lock(mDisplay->windowsMutex);
     for (auto it = mDisplay->windows.begin(); it != mDisplay->windows.end(); it++) {
@@ -116,8 +116,8 @@ Return<void> WaydroidWindow::setIdleInhibit(const hidl_string& task, bool enable
     if (!mDisplay->idle_manager)
         return Void();
 
-    property_get("waydroid.active_apps", property, "Waydroid");
-    if (!strcmp(property, "Waydroid"))
+    property_get("waydroid.active_apps", property, "Openfde");
+    if (!strcmp(property, "Openfde"))
         taskID = "0";
 
     std::scoped_lock lock(mDisplay->windowsMutex);

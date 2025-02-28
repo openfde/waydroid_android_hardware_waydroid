@@ -570,12 +570,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
     std::string single_layer_tid;
     std::string single_layer_aid;
 
-    if (active_apps != "Waydroid" && !property_get_bool("waydroid.background_start", true)) {
+    if (active_apps != "Openfde" && !property_get_bool("waydroid.background_start", true)) {
         for (size_t l = 0; l < contents->numHwLayers; l++) {
             std::string layer_name = pdev->display->layer_names[l];
             if (layer_name.rfind("BootAnimation#", 0) == 0) {
                 // force single window mode during boot animation
-                active_apps = "Waydroid";
+                active_apps = "Openfde";
                 break;
             }
         }
@@ -597,7 +597,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 
         property_set("waydroid.open_windows", "0");
         goto sync;
-    } else if (active_apps == "Waydroid") {
+    } else if (active_apps == "Openfde") {
         // Clear all open windows if there's any and just keep "Waydroid"
         if (pdev->windows.find(active_apps) == pdev->windows.end() || !pdev->windows[active_apps]->isActive) {
             for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
@@ -659,7 +659,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         for (auto it = pdev->windows.cbegin(); it != pdev->windows.cend();) {
             if (it->second) {
                 // This window is closed, but android is still showing leftover layers, we detect it here
-                if (!it->second->isActive || it->first == "Waydroid") {
+                if (!it->second->isActive || it->first == "Openfde") {
                     for (size_t l = 0; l < contents->numHwLayers; l++) {
                         std::string layer_name = pdev->display->layer_names[l];
                         if (layer_name.substr(0, 4) == "TID:") {
@@ -772,7 +772,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         struct window *window = NULL;
         std::string layer_name = pdev->display->layer_names[layer];
 
-        if (active_apps == "Waydroid") {
+        if (active_apps == "Openfde") {
             // Show everything in a single window
             if (pdev->windows.find(active_apps) == pdev->windows.end()) {
                 pdev->windows[active_apps] = create_window(pdev->display, pdev->use_subsurface, active_apps, "0", {0, 0, 0, 255});
@@ -794,6 +794,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             if (layer_name.substr(0, 4) == "TID:") {
                 std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
                 std::string layer_aid = layer_name.substr(layer_name.find('#') + 1, layer_name.find('/') - layer_name.find('#') - 1);
+		ALOGE("gy layer _aid %s", layer_aid.c_str());
 
                 bool showWindow = false;
                 std::istringstream iss(blacklist_apps);
@@ -985,7 +986,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         pdev->display->geo_changed = false;
     }
 
-    if (!pdev->multi_windows && single_layer_tid.length() && active_apps != "Waydroid") {
+    if (!pdev->multi_windows && single_layer_tid.length() && active_apps != "Openfde") {
         for (auto const& [layer_tid, window] : pdev->windows) {
             // Replace inactive app window buffer with snapshot in staged mode
             if (layer_tid != single_layer_tid && !window->snapshot_buffer) {
@@ -1285,10 +1286,11 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     // Initialize width and height with user-provided overrides if any
     choose_width_height(pdev->display, 0, 0);
 
-    auto first_window = create_window(pdev->display, pdev->use_subsurface, "Waydroid", "0", {0, 0, 0, 255});
+    //create Openfde window to match desktop file openfde.desktop
+    auto first_window = create_window(pdev->display, pdev->use_subsurface, "Openfde", "0", {0, 0, 0, 255});
     if (!property_get_bool("waydroid.background_start", true)) {
-        pdev->windows["Waydroid"] = first_window;
-        property_set("waydroid.active_apps", "Waydroid");
+        pdev->windows["Openfde"] = first_window;
+        property_set("waydroid.active_apps", "Openfde");
         property_set("waydroid.open_windows", "1");
     } else {
         destroy_window(first_window);
@@ -1357,7 +1359,7 @@ hwc_module_t HAL_MODULE_INFO_SYM = {
         .module_api_version = HWC_MODULE_API_VERSION_0_1,
         .hal_api_version = HARDWARE_HAL_API_VERSION,
         .id = HWC_HARDWARE_MODULE_ID,
-        .name = "Waydroid hwcomposer module",
+        .name = "waydroid hwcomposer module",
         .author = "The Android Open Source Project",
         .methods = &hwc_module_methods,
     }
