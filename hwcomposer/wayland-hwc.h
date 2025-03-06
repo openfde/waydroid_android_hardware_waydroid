@@ -81,6 +81,7 @@ enum {
     GRALLOC_X100,
     GRALLOC_DEFAULT,
     GRALLOC_RANCHU,
+    GRALLOC_VIVANTE,
 };
 
 #define MAX_TOUCHPOINTS 10
@@ -221,6 +222,37 @@ typedef struct
 
 } __attribute__((aligned(sizeof(int)),packed))  X100_native_handle_t;
 
+typedef struct {
+    native_handle_t nativeHandle;
+
+    /* file descriptors */
+    int prime_fd;
+
+
+    /* integers */
+    int magic;
+
+    int flags;
+    int size;
+    int offset;
+    uint64_t base __attribute__((aligned(8)));
+    uint64_t phys __attribute__((aligned(8)));
+
+    int width;
+    int height;
+    int format;
+    int stride; /* the stride in bytes. */
+    int b_unknown;
+
+    int u_unknown;
+    int p_unknown;
+    uint64_t f_unknown[3] __attribute__((aligned(8)));
+    uint64_t s_unknown;
+
+    /* pointer to some bo struct. */
+    uint64_t d_unknown __attribute__((aligned(8)));
+    uint64_t r_unknown[3];
+} gc_private_handle_t;
 
 struct window {
     struct display *display;
