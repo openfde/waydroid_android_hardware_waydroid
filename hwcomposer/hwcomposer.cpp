@@ -316,16 +316,25 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         if (pdev->display->dmabuf) {
 		//stride = pixel_stride * 4 is based on aligned memory by page(32bit)
             ret = create_dmabuf_wl_buffer(pdev->display, buf, cros_handle->iWidth, cros_handle->iHeight, cros_handle->iFormat, -1, cros_handle->fd[0], pixel_stride, pixel_stride *4, 0,DRM_FORMAT_MOD_INVALID, layer->handle);
-		if (ret != 0 ){
-		    ALOGE("x100 create dmabuf wl buffer failed");
-		}
+            if (ret != 0 ) {
+                ALOGE("x100 create dmabuf wl buffer failed");
+            }
         } else {
-		ret = create_shm_wl_buffer(pdev->display, buf, cros_handle->iWidth, cros_handle->iHeight, cros_handle->iFormat, pixel_stride, layer->handle);
-		if (ret != 0 ){
-		    ALOGE("x100 create shm wl buffer failed");
-		}
-		update_shm_buffer(pdev->display, buf);
-	}
+            ret = create_shm_wl_buffer(pdev->display, buf, cros_handle->iWidth, cros_handle->iHeight, cros_handle->iFormat, pixel_stride, layer->handle);
+            if (ret != 0 ) {
+                ALOGE("x100 create shm wl buffer failed");
+            }
+            update_shm_buffer(pdev->display, buf);
+        }
+    } else if (pdev->display->gtype == GRALLOC_LEOPARD) {
+        const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
+        if (pdev->display->dmabuf) {
+            ret = create_dmabuf_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format,
+                -1, gc_handle->prime_fd, pixel_stride, gc_handle->stride, 0,DRM_FORMAT_MOD_INVALID, layer->handle);
+        } else {
+            ret = create_shm_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format, pixel_stride, layer->handle);
+            update_shm_buffer(pdev->display, buf);
+        }
     } else {
         if (pdev->display->gtype == GRALLOC_ANDROID) {
             ret = create_android_wl_buffer(pdev->display, buf, width, height, format, pixel_stride, layer->handle);
