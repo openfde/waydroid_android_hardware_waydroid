@@ -774,7 +774,7 @@ static int hwc_set(struct hwc_composer_device_1* dev, size_t numDisplays,
         }
         struct buffer *bufeach = get_wl_buffer(pdev, fb_layer, layer);
         ALOGD("hwc_set: Layer %zu get buffer composition type %d width %d height %d ",
-              layer, fb_layer->compositionType, buf->width, buf->height);
+              layer, fb_layer->compositionType, bufeach->width, bufeach->height);
         if (fb_layer->compositionType !=
             (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER_TARGET) && layer == l) {
             ALOGD("hwc_set: Layer %zu has unsupported composition type %d",
