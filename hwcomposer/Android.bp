@@ -36,6 +36,15 @@ cc_prebuilt_library_shared {
 cc_prebuilt_library_shared {
     name: "libandroid-support",
     arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
         arm64: {
             srcs: ["lib/libandroid-support.so"],
         },
@@ -48,6 +57,15 @@ cc_prebuilt_library_shared {
 cc_prebuilt_library_shared {
     name: "libXau",
     arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
         arm64: {
             srcs: ["lib/libXau.so"],
         },
@@ -59,6 +77,15 @@ cc_prebuilt_library_shared {
 cc_prebuilt_library_shared {
     name: "libXdmcp",
     arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
         arm64: {
             srcs: ["lib/libXdmcp.so"],
         },
@@ -70,6 +97,15 @@ cc_prebuilt_library_shared {
 cc_prebuilt_library_shared {
     name: "libxcb",
     arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
         arm64: {
             srcs: ["lib/libxcb.so"],
         },
@@ -143,6 +179,12 @@ cc_library_shared {
         arm: {
             enabled: false,
         },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
         arm64: {
             enabled: true,
         },
@@ -155,11 +197,6 @@ cc_library_shared {
     ],
     generated_sources: ["wayland_android_client_protocol_sources"],
     generated_headers: ["wayland_android_client_protocol_headers"],
-}
-
-cc_library_static {
-    name: "libxcb",
-    enabled: false,
 }
 
 // Generate wayland-android protocol source file
