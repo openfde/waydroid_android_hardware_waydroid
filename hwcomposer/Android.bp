@@ -16,13 +16,14 @@
 // hw/<OVERLAY_HARDWARE_MODULE_ID>.<ro.product.board>.so
 cc_prebuilt_library_shared {
     name: "libX11",
-    proprietary : true,
-    arch: {
-        arm64: {
-            srcs: ["lib/libX11.so"],
+    target: {
+        android_arm64: {
+            srcs: ["lib/libX11.so"],  // 确保路径正确
         },
     },
     export_include_dirs: ["include"],
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
 }
 
 
