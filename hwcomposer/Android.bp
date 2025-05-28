@@ -31,6 +31,11 @@ cc_library_shared {
         "libdrm",
         "libEGL",
         "libGLESv2",
+        "libX11",
+        "libXau",
+        "libxcb",
+        "libXcomposite",
+        "libXdmcp",
         "vendor.waydroid.display@1.0",
         "vendor.waydroid.display@1.1",
         "vendor.waydroid.task@1.0",
@@ -63,6 +68,9 @@ cc_library_shared {
         "device/generic/goldfish-opengl/shared/gralloc_cb/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include-types",
+    ],
+    local_include_dirs: [
+        "include"
     ],
     cflags: [
         "-DLOG_TAG=\"hwcomposer\"",
