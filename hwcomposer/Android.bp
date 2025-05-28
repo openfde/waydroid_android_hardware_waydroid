@@ -20,10 +20,6 @@ cc_prebuilt_library_shared {
     arch: {
         arm64: {
             srcs: ["lib/libX11.so"],
-            srcs: ["lib/libXau.so"],
-            srcs: ["lib/libxcb.so"],
-            srcs: ["lib/libXcomposite.so"],
-            srcs: ["lib/libXdmcp.so"],
         },
     },
     export_include_dirs: ["include"],
