@@ -253,7 +253,7 @@ static void update_shm_buffer(struct display* display, struct buffer *buffer)
 
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos)
 {
-    ALOGE("get_wl_buffer pos:%d", pos);
+    ALOGE("get_wl_buffer pos:%zu", pos);
     uint32_t format;
     uint32_t pixel_stride;
     uint32_t width;
@@ -521,7 +521,7 @@ static const struct wp_presentation_feedback_listener feedback_listener = {
     feedback_discarded
 };
 
-static void open_x_window(void* arg) {
+static void* open_x_window(void*) {
     Display *display;
     Window window;
     XEvent event;
@@ -532,7 +532,7 @@ static void open_x_window(void* arg) {
     // 1. 打开显示连接
     display = XOpenDisplay("unix:/tmp/.X11-unix/X1001");
     if (display == NULL) {
-        log("无法打开X显示器\n");
+        ALOGE("无法打开X显示器\n");
         exit(1);
     }
 
@@ -601,7 +601,8 @@ static void open_x_window(void* arg) {
     XDestroyImage(image);  // 数据也在其中释放
     XDestroyWindow(display, window);
     XCloseDisplay(display);
-    pthread_self();
+    (void)pthread_self();
+    return NULL;
 }
 
 static void createXwindow(){
@@ -610,7 +611,7 @@ static void createXwindow(){
     }
     property_set("hwc.x11.running", "true");
 
-    static pthread_t thread_id;
+    pthread_t thread_id;
     int result = pthread_create(&thread_id, NULL, open_x_window, NULL);
     pthread_detach(thread_id);
 }
