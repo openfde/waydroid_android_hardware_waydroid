@@ -25,7 +25,6 @@ cc_prebuilt_library_shared {
     shared_libs: [
         "libxcb",
         "libandroid-support",
-        "libc",
         "libdl",
     ],
     proprietary : true,
@@ -48,14 +47,9 @@ cc_prebuilt_library_shared {
 
 cc_prebuilt_library_shared {
     name: "libXau",
-    target: {
-        android: {
-            arch: {
-                arm64: {
-                    srcs: ["lib/libXau.so"],
-                },
-            },
-            enabled: false,   // 禁用其他架构
+    arch: {
+        arm64: {
+            srcs: ["lib/libXau.so"],
         },
     },
     proprietary: true,
@@ -64,14 +58,9 @@ cc_prebuilt_library_shared {
 
 cc_prebuilt_library_shared {
     name: "libXdmcp",
-    target: {
-        android: {
-            arch: {
-                arm64: {
-                    srcs: ["lib/libXdmcp.so"],
-                },
-            },
-            enabled: false,
+    arch: {
+        arm64: {
+            srcs: ["lib/libXdmcp.so"],
         },
     },
     proprietary: true,
@@ -80,20 +69,14 @@ cc_prebuilt_library_shared {
 
 cc_prebuilt_library_shared {
     name: "libxcb",
-    target: {
-        android: {
-            arch: {
-                arm64: {
-                    srcs: ["lib/libxcb.so"],
-                },
-            },
-            enabled: false,
+    arch: {
+        arm64: {
+            srcs: ["lib/libxcb.so"],
         },
     },
     shared_libs: [
         "libXau",
         "libXdmcp",
-        "libc",
     ],
     proprietary: true,
     vendor: false,
