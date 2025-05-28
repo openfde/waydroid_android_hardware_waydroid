@@ -613,6 +613,7 @@ static void createXwindow(){
 
     pthread_t thread_id;
     int result = pthread_create(&thread_id, NULL, open_x_window, NULL);
+    ALOGE("createXwindow %d", result);
     pthread_detach(thread_id);
 }
 
