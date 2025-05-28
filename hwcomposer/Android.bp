@@ -17,6 +17,15 @@
 cc_prebuilt_library_shared {
     name: "libX11",
     arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
         arm64: {
             srcs: ["lib/libX11.so"],
         },
