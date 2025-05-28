@@ -14,6 +14,21 @@
 
 // HAL module implemenation stored in
 // hw/<OVERLAY_HARDWARE_MODULE_ID>.<ro.product.board>.so
+cc_prebuilt_library_shared {
+    name: "libx11",
+    target: {
+        android_arm64: {
+            srcs: ["lib/libX11.so"],
+            srcs: ["lib/libXau.so"],
+            srcs: ["lib/libxcb.so"],
+            srcs: ["lib/libXcomposite.so"],
+            srcs: ["lib/libXdmcp.so"],
+        },
+    },
+    export_include_dirs: ["include"],
+}
+
+
 cc_library_shared {
     name: "hwcomposer.waydroid",
     relative_install_path: "hw",
@@ -32,10 +47,6 @@ cc_library_shared {
         "libEGL",
         "libGLESv2",
         "libX11",
-        "libXau",
-        "libxcb",
-        "libXcomposite",
-        "libXdmcp",
         "vendor.waydroid.display@1.0",
         "vendor.waydroid.display@1.1",
         "vendor.waydroid.task@1.0",
@@ -68,9 +79,6 @@ cc_library_shared {
         "device/generic/goldfish-opengl/shared/gralloc_cb/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include-types",
-    ],
-    local_include_dirs: [
-        "include"
     ],
     cflags: [
         "-DLOG_TAG=\"hwcomposer\"",
