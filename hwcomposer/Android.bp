@@ -21,6 +21,13 @@ cc_prebuilt_library_shared {
             srcs: ["lib/libX11.so"],
         },
     },
+
+    shared_libs: [
+        "libxcb",
+        "libandroid-support",
+        "libc",
+        "libdl",
+    ],
     proprietary : true,
     vendor: false,
     visibility: ["//hardware/waydroid/hwcomposer"],
@@ -45,6 +52,11 @@ cc_prebuilt_library_shared {
             srcs: ["lib/libxcb.so"],
         },
     },
+    shared_libs: [
+        "libXau",
+        "libXdmcp",
+        "libc",
+    ],
     proprietary : true,
     vendor: false,
     visibility: ["//hardware/waydroid/hwcomposer"],
