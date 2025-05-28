@@ -16,7 +16,7 @@
 // hw/<OVERLAY_HARDWARE_MODULE_ID>.<ro.product.board>.so
 cc_prebuilt_library_shared {
     name: "libX11",
-    target: {
+    arch: {
         arm64: {
             srcs: ["lib/libX11.so"],  // 确保路径正确
         },
