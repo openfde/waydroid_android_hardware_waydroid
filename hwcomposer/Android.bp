@@ -16,13 +16,10 @@
 // hw/<OVERLAY_HARDWARE_MODULE_ID>.<ro.product.board>.so
 cc_prebuilt_library_shared {
     name: "libx11",
-    target: {
-        android_arm64: {
+    proprietary : true,
+    arch: {
+        arm64: {
             srcs: ["lib/libX11.so"],
-            srcs: ["lib/libXau.so"],
-            srcs: ["lib/libxcb.so"],
-            srcs: ["lib/libXcomposite.so"],
-            srcs: ["lib/libXdmcp.so"],
         },
     },
     export_include_dirs: ["include"],
