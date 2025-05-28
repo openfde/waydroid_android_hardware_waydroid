@@ -18,11 +18,46 @@ cc_prebuilt_library_shared {
     name: "libX11",
     arch: {
         arm64: {
-            srcs: ["lib/libX11.so"],  // 确保路径正确
+            srcs: ["lib/libX11.so"],
         },
     },
     proprietary : true,
-    export_include_dirs: ["include"],
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
+}
+
+cc_prebuilt_library_shared {
+    name: "libXau",
+    arch: {
+        arm64: {
+            srcs: ["lib/libXau.so"],
+        },
+    },
+    proprietary : true,
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
+}
+
+cc_prebuilt_library_shared {
+    name: "libxcb",
+    arch: {
+        arm64: {
+            srcs: ["lib/libxcb.so"],
+        },
+    },
+    proprietary : true,
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
+}
+
+cc_prebuilt_library_shared {
+    name: "libXdmcp",
+    arch: {
+        arm64: {
+            srcs: ["lib/libXdmcp.so"],
+        },
+    },
+    proprietary : true,
     vendor: false,
     visibility: ["//hardware/waydroid/hwcomposer"],
 }
@@ -46,6 +81,9 @@ cc_library_shared {
         "libEGL",
         "libGLESv2",
         "libX11",
+        "libXau",
+        "libxcb",
+        "libXdmcp",
         "vendor.waydroid.display@1.0",
         "vendor.waydroid.display@1.1",
         "vendor.waydroid.task@1.0",
@@ -78,6 +116,10 @@ cc_library_shared {
         "device/generic/goldfish-opengl/shared/gralloc_cb/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include-types",
+    ],
+
+    local_include_dirs: [
+        "include"
     ],
 
     arch : {
