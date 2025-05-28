@@ -17,10 +17,11 @@
 cc_prebuilt_library_shared {
     name: "libX11",
     target: {
-        android_arm64: {
+        arm64: {
             srcs: ["lib/libX11.so"],  // 确保路径正确
         },
     },
+    proprietary : true,
     export_include_dirs: ["include"],
     vendor: false,
     visibility: ["//hardware/waydroid/hwcomposer"],
@@ -78,6 +79,12 @@ cc_library_shared {
         "device/generic/goldfish-opengl/shared/qemupipe/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include-types",
     ],
+    arm: {
+        enabled: false,
+    },
+    arm64: {
+        enabled: true,
+    },
     cflags: [
         "-DLOG_TAG=\"hwcomposer\"",
         "-Wall",
