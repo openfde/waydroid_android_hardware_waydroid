@@ -157,6 +157,11 @@ cc_library_shared {
     generated_headers: ["wayland_android_client_protocol_headers"],
 }
 
+cc_library_static {
+    name: "libxcb",
+    enabled: false,
+}
+
 // Generate wayland-android protocol source file
 genrule {
     name: "wayland_android_client_protocol_sources",
