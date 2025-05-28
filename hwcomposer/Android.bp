@@ -46,6 +46,18 @@ cc_prebuilt_library_shared {
 }
 
 cc_prebuilt_library_shared {
+    name: "libandroid-support",
+    arch: {
+        arm64: {
+            srcs: ["lib/libandroid-support.so"],
+        },
+    },
+    proprietary : true,
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
+}
+
+cc_prebuilt_library_shared {
     name: "libxcb",
     arch: {
         arm64: {
