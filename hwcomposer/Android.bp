@@ -79,12 +79,16 @@ cc_library_shared {
         "device/generic/goldfish-opengl/shared/qemupipe/include",
         "device/generic/goldfish-opengl/shared/qemupipe/include-types",
     ],
-    arm: {
-        enabled: false,
+
+    arch : {
+        arm: {
+            enabled: false,
+        },
+        arm64: {
+            enabled: true,
+        },
     },
-    arm64: {
-        enabled: true,
-    },
+
     cflags: [
         "-DLOG_TAG=\"hwcomposer\"",
         "-Wall",
