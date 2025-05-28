@@ -46,6 +46,18 @@ cc_prebuilt_library_shared {
 }
 
 cc_prebuilt_library_shared {
+    name: "libXdmcp",
+    arch: {
+        arm64: {
+            srcs: ["lib/libXdmcp.so"],
+        },
+    },
+    proprietary : true,
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
+}
+
+cc_prebuilt_library_shared {
     name: "libandroid-support",
     arch: {
         arm64: {
@@ -74,18 +86,6 @@ cc_prebuilt_library_shared {
     visibility: ["//hardware/waydroid/hwcomposer"],
 }
 
-cc_prebuilt_library_shared {
-    name: "libXdmcp",
-    arch: {
-        arm64: {
-            srcs: ["lib/libXdmcp.so"],
-        },
-    },
-    proprietary : true,
-    vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
-}
-
 
 cc_library_shared {
     name: "hwcomposer.waydroid",
@@ -105,9 +105,6 @@ cc_library_shared {
         "libEGL",
         "libGLESv2",
         "libX11",
-        "libXau",
-        "libxcb",
-        "libXdmcp",
         "vendor.waydroid.display@1.0",
         "vendor.waydroid.display@1.1",
         "vendor.waydroid.task@1.0",
