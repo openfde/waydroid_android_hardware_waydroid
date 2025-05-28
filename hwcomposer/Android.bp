@@ -47,10 +47,47 @@ cc_prebuilt_library_shared {
 }
 
 cc_prebuilt_library_shared {
+    name: "libXau",
+    target: {
+        android: {
+            arch: {
+                arm64: {
+                    srcs: ["lib/libXau.so"],
+                },
+            },
+            enabled: false,   // 禁用其他架构
+        },
+    },
+    proprietary: true,
+    vendor: false,
+}
+
+cc_prebuilt_library_shared {
+    name: "libXdmcp",
+    target: {
+        android: {
+            arch: {
+                arm64: {
+                    srcs: ["lib/libXdmcp.so"],
+                },
+            },
+            enabled: false,
+        },
+    },
+    proprietary: true,
+    vendor: false,
+}
+
+cc_prebuilt_library_shared {
     name: "libxcb",
-    arch: {
-        arm64: {
-            srcs: ["lib/libxcb.so"],
+    target: {
+        android: {
+            arch: {
+                arm64: {
+                    srcs: ["lib/libxcb.so"],
+                },
+            },
+            enabled: false,
         },
     },
     shared_libs: [
@@ -58,9 +95,8 @@ cc_prebuilt_library_shared {
         "libXdmcp",
         "libc",
     ],
-    proprietary : true,
+    proprietary: true,
     vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
 }
 
 
@@ -136,30 +172,6 @@ cc_library_shared {
     ],
     generated_sources: ["wayland_android_client_protocol_sources"],
     generated_headers: ["wayland_android_client_protocol_headers"],
-}
-
-cc_prebuilt_library_shared {
-    name: "libXau",
-    arch: {
-        arm64: {
-            srcs: ["lib/libXau.so"],
-        },
-    },
-    proprietary : true,
-    vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
-}
-
-cc_prebuilt_library_shared {
-    name: "libXdmcp",
-    arch: {
-        arm64: {
-            srcs: ["lib/libXdmcp.so"],
-        },
-    },
-    proprietary : true,
-    vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
 }
 
 // Generate wayland-android protocol source file
