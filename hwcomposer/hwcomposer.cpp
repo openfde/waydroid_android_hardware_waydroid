@@ -521,7 +521,9 @@ static const struct wp_presentation_feedback_listener feedback_listener = {
     feedback_discarded
 };
 
-static void* open_x_window(void*) {
+static void* open_x_window(void* arg) {
+    struct buffer *buf = (struct buffer *)arg;
+    egl_render_to_pixels();
     Display *display;
     Window window;
     XEvent event;
@@ -542,7 +544,7 @@ static void* open_x_window(void*) {
 
     // 2. 创建窗口
     window = XCreateSimpleWindow(display, RootWindow(display, screen),
-                                 10, 10, 400, 300, 1,
+                                 10, 10, buf->width, buf->height, 0,
                                  black_pixel, white_pixel);
 
     // 3. 选择事件类型
@@ -556,24 +558,24 @@ static void* open_x_window(void*) {
 
     // 6. 创建图像数据（简单填充颜色）
     XImage *image;
-    int width = 200, height = 150;
-    char *data = (char *)malloc(width * height * 4);  // 32位色深，RGBA
-
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            int index = (y * width + x) * 4;
-            // 渐变红到蓝
-            data[index]     = (char)(x * 255 / width);   // R
-            data[index + 1] = (char)(y * 255 / height);  // G
-            data[index + 2] = (char)(255 - x * 255 / width); // B
-            data[index + 3] = 0; // A (忽略)
-        }
-    }
+//    int width = 200, height = 150;
+//    char *data = (char *)malloc(width * height * 4);  // 32位色深，RGBA
+//
+//    for (int y = 0; y < height; y++) {
+//        for (int x = 0; x < width; x++) {
+//            int index = (y * width + x) * 4;
+//            // 渐变红到蓝
+//            data[index]     = (char)(x * 255 / width);   // R
+//            data[index + 1] = (char)(y * 255 / height);  // G
+//            data[index + 2] = (char)(255 - x * 255 / width); // B
+//            data[index + 3] = 0; // A (忽略)
+//        }
+//    }
 
     // 7. 创建 XImage 结构
     image = XCreateImage(display, DefaultVisual(display, screen),
                          DefaultDepth(display, screen),
-                         ZPixmap, 0, data, width, height, 32, 0);
+                         ZPixmap, 0, buf->shm_data, buf->width, buf->height, 32, 0);
 
     while (1) {
         if (!property_get_bool("hwc.x11.start", false)) {
@@ -585,8 +587,8 @@ static void* open_x_window(void*) {
             // 在窗口上绘制图像
             XPutImage(display, window, gc, image,
                 0, 0,  // 源偏移
-                100, 50,  // 目标位置
-                width, height);
+                0, 0,  // 目标位置
+                buf->width, buf->height);
                 // 8. 主事件循环
                 XFlush(display);
         }
@@ -605,14 +607,14 @@ static void* open_x_window(void*) {
     return NULL;
 }
 
-static void createXwindow(){
+static void createXwindow(struct buffer *buffer){
     if (property_get_bool("hwc.x11.running", false)) {
         return;
     }
     property_set("hwc.x11.running", "true");
 
     pthread_t thread_id;
-    int result = pthread_create(&thread_id, NULL, open_x_window, NULL);
+    int result = pthread_create(&thread_id, NULL, open_x_window, buffer);
     ALOGE("createXwindow %d", result);
     pthread_detach(thread_id);
 }
@@ -868,8 +870,15 @@ static int hwc_set(struct hwc_composer_device_1* dev, size_t numDisplays,
         std::string layer_name = pdev->display->layer_names[layer];
         ALOGD("hwc_set: Processing layer %zu (%s)", layer, layer_name.c_str());
 
+
+
+
         if (layer_name.find("nativeDemo") != std::string::npos) {
-            createXwindow();
+            struct buffer *demobuf = get_wl_buffer(pdev, fb_layer, layer);
+            ALOGD("hwc_set: Layer %zu get buffer composition type %d width %d height %d ",
+                  layer, fb_layer->compositionType, demobuf->width, demobuf->height);
+            egl_render_to_pixels(pdev->display, demobuf);
+            createXwindow(demobuf);
         }
 
         if (fb_layer->flags & HWC_SKIP_LAYER) {
@@ -879,9 +888,6 @@ static int hwc_set(struct hwc_composer_device_1* dev, size_t numDisplays,
             }
             continue;
         }
-        struct buffer *bufeach = get_wl_buffer(pdev, fb_layer, layer);
-        ALOGD("hwc_set: Layer %zu get buffer composition type %d width %d height %d ",
-              layer, fb_layer->compositionType, bufeach->width, bufeach->height);
         if (fb_layer->compositionType !=
             (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER_TARGET) && layer == l) {
             ALOGD("hwc_set: Layer %zu has unsupported composition type %d",
