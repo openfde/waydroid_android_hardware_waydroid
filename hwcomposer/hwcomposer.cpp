@@ -162,7 +162,6 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
 static int hwc_prepare(hwc_composer_device_1_t* dev,
                        size_t numDisplays, hwc_display_contents_1_t** displays) {
     struct waydroid_hwc_composer_device_1 *pdev = (struct waydroid_hwc_composer_device_1 *)dev;
-    ALOGE("hwc_prepare");
     if (!numDisplays || !displays) return 0;
 
     hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
@@ -219,7 +218,6 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
 
 static void update_shm_buffer(struct display* display, struct buffer *buffer)
 {
-    ALOGE("update_shm_buffer");
     // Slower but always correct
     if (display->gtype != GRALLOC_DEFAULT) {
         display->egl_work_queue.push_back(std::bind(egl_render_to_pixels, display, buffer));
@@ -253,7 +251,6 @@ static void update_shm_buffer(struct display* display, struct buffer *buffer)
 
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos)
 {
-    ALOGE("get_wl_buffer pos:%zu", pos);
     uint32_t format;
     uint32_t pixel_stride;
     uint32_t width;
@@ -523,17 +520,22 @@ static const struct wp_presentation_feedback_listener feedback_listener = {
 
 static void* open_x_window(void* arg) {
     struct buffer *buf = (struct buffer *)arg;
+    if(!buf){
+        return NULL;
+    }
     Display *display;
     Window window;
     XEvent event;
     GC gc;
     int screen;
     unsigned long black_pixel, white_pixel;
+    char property[PROPERTY_VALUE_MAX];
+    property_get("hwc.x11.port", property, "unix:/tmp/.X11-unix/X0");
 
     // 1. 打开显示连接
-    display = XOpenDisplay("unix:/tmp/.X11-unix/X1001");
+    display = XOpenDisplay(property);
     if (display == NULL) {
-        ALOGE("无法打开X显示器\n");
+        ALOGE("X11 无法打开X显示器\n");
         exit(1);
     }
 
@@ -557,37 +559,47 @@ static void* open_x_window(void* arg) {
 
     // 6. 创建图像数据（简单填充颜色）
     XImage *image;
-//    int width = 200, height = 150;
-//    char *data = (char *)malloc(width * height * 4);  // 32位色深，RGBA
-//
-//    for (int y = 0; y < height; y++) {
-//        for (int x = 0; x < width; x++) {
-//            int index = (y * width + x) * 4;
-//            // 渐变红到蓝
-//            data[index]     = (char)(x * 255 / width);   // R
-//            data[index + 1] = (char)(y * 255 / height);  // G
-//            data[index + 2] = (char)(255 - x * 255 / width); // B
-//            data[index + 3] = 0; // A (忽略)
-//        }
-//    }
+    int width = 200, height = 150;
+    char *data = (char *)malloc(width * height * 4);  // 32位色深，RGBA
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int index = (y * width + x) * 4;
+            // 渐变红到蓝
+            data[index]     = (char)(x * 255 / width);   // R
+            data[index + 1] = (char)(y * 255 / height);  // G
+            data[index + 2] = (char)(255 - x * 255 / width); // B
+            data[index + 3] = 0; // A (忽略)
+        }
+    }
 
     // 7. 创建 XImage 结构
+    ALOGE("X11  depth:%d stride:%ld",
+         DefaultDepth(display, screen), buf->pixel_stride);
     image = XCreateImage(display, DefaultVisual(display, screen),
                          DefaultDepth(display, screen),
-                         ZPixmap, 0, (char *)buf->shm_data, buf->width, buf->height, 32, 0);
+                         ZPixmap, 0, (char *)buf->shm_data, buf->width, buf->height, 32, buf->width * 4);
+//                         ZPixmap, 0, data, width, height, 32, 0);
 
+    if(!image){
+        ALOGE("X11 create image fail");
+    }
+
+    int i = 0;
     while (1) {
         if (!property_get_bool("hwc.x11.start", false)) {
             break;
         }
 
         XNextEvent(display, &event);
-        if (event.type == Expose) {
+        if (event.type == Expose && i == 0) {
+            ALOGE("X11 expose");
             // 在窗口上绘制图像
             XPutImage(display, window, gc, image,
                 0, 0,  // 源偏移
                 0, 0,  // 目标位置
                 buf->width, buf->height);
+//                width, height);
                 // 8. 主事件循环
                 XFlush(display);
         }
@@ -597,24 +609,27 @@ static void* open_x_window(void* arg) {
         }
 
     }
+    ALOGE("X11 release");
     // 9. 清理资源
-    XFreeGC(display, gc);
-    XDestroyImage(image);  // 数据也在其中释放
-    XDestroyWindow(display, window);
-    XCloseDisplay(display);
+//    XFreeGC(display, gc);
+//    XDestroyImage(image);  // 数据也在其中释放
+//    XDestroyWindow(display, window);
+//    XCloseDisplay(display);
     (void)pthread_self();
     return NULL;
 }
 
-static void createXwindow(struct buffer *buffer){
+static void createXwindow(struct buffer *buffer, void* shm_data){
     if (property_get_bool("hwc.x11.running", false)) {
         return;
     }
     property_set("hwc.x11.running", "true");
-
+    struct buffer copybuffer;
+    memcpy(&copybuffer, buffer, sizeof(struct buffer));
+    copybuffer.shm_data = shm_data;
     pthread_t thread_id;
-    int result = pthread_create(&thread_id, NULL, open_x_window, buffer);
-    ALOGE("createXwindow %d", result);
+    pthread_create(&thread_id, NULL, open_x_window, copybuffer);
+//    ALOGE("createXwindow %d", result);
     pthread_detach(thread_id);
 }
 
@@ -876,8 +891,9 @@ static int hwc_set(struct hwc_composer_device_1* dev, size_t numDisplays,
             struct buffer *demobuf = get_wl_buffer(pdev, fb_layer, layer);
             ALOGD("hwc_set: Layer %zu get buffer composition type %d width %d height %d ",
                   layer, fb_layer->compositionType, demobuf->width, demobuf->height);
-            egl_render_to_pixels(pdev->display, demobuf);
-            createXwindow(demobuf);
+            void *shm_data;
+            egl_render_to_pixels_1(pdev->display, demobuf, shm_data);
+            createXwindow(demobuf, shm_data);
         }
 
         if (fb_layer->flags & HWC_SKIP_LAYER) {

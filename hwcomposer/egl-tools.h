@@ -29,3 +29,4 @@
 
 void* egl_loop(void* data);
 void egl_render_to_pixels(struct display* display, struct buffer* buf);
+void egl_render_to_pixels_1(struct display* display, struct buffer* buf, void * shm_data);
