@@ -523,7 +523,6 @@ static const struct wp_presentation_feedback_listener feedback_listener = {
 
 static void* open_x_window(void* arg) {
     struct buffer *buf = (struct buffer *)arg;
-    egl_render_to_pixels();
     Display *display;
     Window window;
     XEvent event;
@@ -575,7 +574,7 @@ static void* open_x_window(void* arg) {
     // 7. 创建 XImage 结构
     image = XCreateImage(display, DefaultVisual(display, screen),
                          DefaultDepth(display, screen),
-                         ZPixmap, 0, buf->shm_data, buf->width, buf->height, 32, 0);
+                         ZPixmap, 0, (char *)buf->shm_data, buf->width, buf->height, 32, 0);
 
     while (1) {
         if (!property_get_bool("hwc.x11.start", false)) {
