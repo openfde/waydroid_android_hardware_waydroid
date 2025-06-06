@@ -56,6 +56,13 @@
 
 #include <functional>
 
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <xcb/xcb.h>
+#include <xcb/dri3.h>
+#include <xcb/present.h>
+#include <xcb/xproto.h>
+
 using ::android::sp;
 using ::vendor::waydroid::task::V1_0::IWaydroidTask;
 
@@ -102,6 +109,8 @@ struct window;
 
 struct display {
     struct wl_display *display;
+    xcb_connection_t *xcbconnection;
+    xcb_screen_t *xcbscreen;
     struct wl_registry *registry;
     struct wl_compositor *compositor;
     struct wl_subcompositor *subcompositor;
@@ -187,6 +196,10 @@ struct display {
 struct buffer {
     struct wl_buffer *buffer;
     struct wp_presentation_feedback *feedback;
+    xcb_window_t xcbwindow;
+    xcb_gcontext_t xcbgc;
+    xcb_pixmap_t xcbpixmap;
+    int dri3_fd;
 
     buffer_handle_t handle;
     int width;
