@@ -1014,9 +1014,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     buf->width,          // 宽度
                     buf->height          // 高度
                 );
-	xcb_flush(pdev->display->xcbconnection); // 确保请求发送
-
-        wl_surface_commit(surface);
+        //wl_surface_commit(surface);
 
         if (window->snapshot_buffer) {
             // Snapshot buffer should be detached by now, clean up
@@ -1068,6 +1066,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
             if (it->second)
                 wl_surface_commit(it->second->surface);
+    xcb_flush(pdev->display->xcbconnection); // 确保请求发送
     wl_display_flush(pdev->display->display);
 
 sync:
