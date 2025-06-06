@@ -87,6 +87,10 @@ static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *ge
 
 void
 destroy_buffer(struct buffer* buf) {
+    if (buf->dri3_fd > 0) {
+        close(buf->dri3_fd);
+        buf->dri3_fd = -1;
+    }
     wl_buffer_destroy(buf->buffer);
     if (buf->isShm)
         munmap(buf->shm_data, buf->size);
@@ -2408,6 +2412,14 @@ create_display(const char *gralloc)
         ALOGE("Couldn't open Wayland display.");
         return NULL;
     }
+     display->xcbconnection = xcb_connect_to_display_with_auth_info("unix:/tmp/.X11-unix/X0", NULL, NULL);
+    if (xcb_connection_has_error(display->xcbconnection)) {
+        ALOGE("Couldn't connect to X11 display.");
+        xcb_disconnect(display->xcbconnection);
+        delete display;
+        return NULL;
+    }
+    display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
     sem_init(&display->egl_go, 0, 0);
     sem_init(&display->egl_done, 0, 0);
 
