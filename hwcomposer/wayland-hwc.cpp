@@ -87,10 +87,6 @@ static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *ge
 
 void
 destroy_buffer(struct buffer* buf) {
-    if (buf->dri3_fd > 0) {
-        close(buf->dri3_fd);
-        buf->dri3_fd = -1;
-    }
     wl_buffer_destroy(buf->buffer);
     if (buf->isShm)
         munmap(buf->shm_data, buf->size);
@@ -629,10 +625,10 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
                             XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
     ALOGE("gy xcreate xcb window");
 
-    xcb_map_window(pdev->display->xcbconnection, buf->xcbwindow);
+    xcb_map_window(display->xcbconnection, window->xcbwindow);
     // xcb_flush(pdev->display->xcbconnection);
 
-    buf->xcbgc = xcb_generate_id(display->xcbconnection);
+    window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
 
