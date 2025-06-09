@@ -989,7 +989,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     buf->width,          // 宽度
                     buf->height          // 高度
                 );
-        //wl_surface_commit(surface);
+        wl_surface_commit(surface);
 
         if (window->snapshot_buffer) {
             // Snapshot buffer should be detached by now, clean up
