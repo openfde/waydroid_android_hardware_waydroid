@@ -196,10 +196,8 @@ struct display {
 struct buffer {
     struct wl_buffer *buffer;
     struct wp_presentation_feedback *feedback;
-    xcb_window_t xcbwindow;
-    xcb_gcontext_t xcbgc;
+  
     xcb_pixmap_t xcbpixmap;
-    int dri3_fd;
 
     buffer_handle_t handle;
     int width;
@@ -269,6 +267,9 @@ typedef struct {
 
 struct window {
     struct display *display;
+    xcb_window_t xcbwindow;
+    xcb_gcontext_t xcbgc;
+    int dri3_fd;
     struct wl_surface *surface;
     struct wp_viewport *viewport;
     struct wl_shell_surface *shell_surface;

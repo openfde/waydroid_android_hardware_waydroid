@@ -619,6 +619,34 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
             display->width = display->full_width / display->scale;
     }
 
+
+    window->xcbwindow = xcb_generate_id(display->xcbconnection);
+
+    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+    uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
+
+    xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
+                            XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
+    ALOGE("gy xcreate xcb window");
+
+    xcb_map_window(pdev->display->xcbconnection, buf->xcbwindow);
+    // xcb_flush(pdev->display->xcbconnection);
+
+    buf->xcbgc = xcb_generate_id(display->xcbconnection);
+    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
+
+
+    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
+    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
+    if (!dri3_reply) {
+        ALOGE("Cannot open DRI3 connection");
+    }
+    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
+    free(dri3_reply);
+    if (window->dri3_fd < 0) {
+        ALOGE("Cannot get DRI3 file descriptor");
+    }
+
     // No subsurface background for us!
     if (!use_subsurfaces && !display->subcompositor)
         return window;

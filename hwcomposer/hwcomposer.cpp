@@ -93,7 +93,7 @@ struct waydroid_hwc_composer_device_1 {
     bool multi_windows;
 };
 
-static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos);
+static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
 static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
 static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
@@ -135,7 +135,7 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         }
     }
 
-    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
     if (!buf) {
         ALOGE("Failed to get wayland buffer");
         return true;
@@ -254,7 +254,7 @@ static void update_shm_buffer(struct display* display, struct buffer *buffer)
     }
 }
 
-static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos)
+static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window)
 {
     uint32_t format;
     uint32_t pixel_stride;
@@ -299,42 +299,17 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
         if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
-	    buf->xcbwindow = xcb_generate_id(pdev->display->xcbconnection);
+            if (window != NULL) {
+                buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+                xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, window->xcbwindow,
+                    width * height * 4, width, height,drm_handle->stride, 24, 32, drm_handle->prime_fd);
+                xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+                // xcb_flush(pdev->display->xcbconnection);
 
-            uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-            uint32_t value_list[] = {pdev->display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
-
-            xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, buf->xcbwindow, pdev->display->xcbscreen->root, 0, 0, pdev->display->width, pdev->display->height, 0,
-                            XCB_WINDOW_CLASS_INPUT_OUTPUT, pdev->display->xcbscreen->root_visual, value_mask, value_list);
-            ALOGE("gy xcreate xcb window");
-
-            xcb_map_window(pdev->display->xcbconnection, buf->xcbwindow);
-            // xcb_flush(pdev->display->xcbconnection);
-
-            buf->xcbgc = xcb_generate_id(pdev->display->xcbconnection);
-            xcb_create_gc(pdev->display->xcbconnection, buf->xcbgc, buf->xcbwindow, 0, NULL);
-
-
-            xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, buf->xcbwindow, 0);
-            xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(pdev->display->xcbconnection, dri3_cookie, NULL);
-            if (!dri3_reply) {
-                ALOGE("Cannot open DRI3 connection");
-            }
-            buf->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(pdev->display->xcbconnection, dri3_reply)[0] : -1;
-            free(dri3_reply);
-            if (buf->dri3_fd < 0) {
-                ALOGE("Cannot get DRI3 file descriptor");
-            }
-
-            buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-            xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, buf->xcbwindow,
-                width * height * 4, width, height,drm_handle->stride, 24, 32, drm_handle->prime_fd);
-            xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-            // xcb_flush(pdev->display->xcbconnection);
-
-            if (pixmap_error) {
-                ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
-                free(pixmap_error);
+                if (pixmap_error) {
+                    ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+                    free(pixmap_error);
+                }
             }
 
         } else {
@@ -881,7 +856,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             std::getline(issLayer, LayerRawName, '#');
             if (LayerRawName == "Sprite" && pdev->display->pointer_surface) {
                 if (pdev->display->cursor_surface) {
-                    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+                    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
                     if (!buf) {
                         ALOGE("Failed to get wayland buffer");
                         if (fb_layer->acquireFenceFd != -1) {
@@ -943,7 +918,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             continue;
         }
 
-        struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer);
+        struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,window);
         if (!buf) {
             ALOGE("Failed to get wayland buffer");
             if (fb_layer->acquireFenceFd != -1) {
@@ -1007,8 +982,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         }
 	xcb_copy_area(pdev->display->xcbconnection,
                     buf->xcbpixmap,         // 源 Pixmap
-                    buf->xcbwindow,     // 目标窗口
-                    buf->xcbgc,             // 图形上下文
+                    window->xcbwindow,     // 目标窗口
+                    window->xcbgc,             // 图形上下文
                     0, 0,           // 源坐标 (x, y)
                     0, 0,           // 目标坐标 (x, y)
                     buf->width,          // 宽度
