@@ -356,6 +356,18 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             ret = create_shm_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format, pixel_stride, layer->handle);
             update_shm_buffer(pdev->display, buf);
         }
+        if (window != NULL) {
+            buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+            xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, window->xcbwindow,
+                width * height * 4, width, height, gc_handle->stride, 24, 32, gc_handle->prime_fd);
+            xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+            // xcb_flush(pdev->display->xcbconnection);
+
+            if (pixmap_error) {
+                ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+                free(pixmap_error);
+            }
+        }
     } else {
         if (pdev->display->gtype == GRALLOC_ANDROID) {
             ret = create_android_wl_buffer(pdev->display, buf, width, height, format, pixel_stride, layer->handle);
