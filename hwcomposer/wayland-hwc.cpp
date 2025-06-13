@@ -2444,6 +2444,7 @@ create_display(const char *gralloc)
         return NULL;
     }
     display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
+    property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
     sem_init(&display->egl_done, 0, 0);
 
