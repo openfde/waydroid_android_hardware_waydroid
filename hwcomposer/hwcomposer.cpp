@@ -1030,15 +1030,32 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             wp_presentation_feedback_add_listener(buf->feedback,
                               &feedback_listener, pdev);
         }
-	xcb_copy_area(pdev->display->xcbconnection,
-                    buf->xcbpixmap,         // 源 Pixmap
-                    window->xcbwindow,     // 目标窗口
-                    window->xcbgc,             // 图形上下文
-                    0, 0,           // 源坐标 (x, y)
-                    0, 0,           // 目标坐标 (x, y)
-                    buf->width,          // 宽度
-                    buf->height          // 高度
-                );
+        if (pdev->use_subsurface ) {
+            ALOGE("gy before fist copy area");
+            xcb_copy_area(pdev->display->xcbconnection,
+                        buf->xcbpixmap,         // 源 Pixmap
+                        window->xcbwindows[window->lastLayer],     // 目标窗口
+                        window->xcbgcs[window->lastLayer],         // 图形上下文
+                        0, 0,           // 源坐标 (x, y)
+                        fb_layer->displayFrame.right - fb_layer->displayFrame.left,   // width
+                        fb_layer->displayFrame.bottom - fb_layer->displayFrame.top,   // height
+                        buf->width,          // 宽度
+                        buf->height          // 高度
+                    );
+                    //tijiao main
+             ALOGE("gy after fist copy area");
+        }else {
+             xcb_copy_area(pdev->display->xcbconnection,
+                       buf->xcbpixmap,         // 源 Pixmap
+                        window->xcbwindow,     // 目标窗口
+                        window->xcbgc,         // 图形上下文
+                        0, 0,           // 源坐标 (x, y)
+                        0, 0,
+                        buf->width,          // 宽度
+                        buf->height          // 高度
+                   );
+       }
+
         wl_surface_commit(surface);
 
         if (window->snapshot_buffer) {
