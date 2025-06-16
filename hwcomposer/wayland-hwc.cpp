@@ -531,6 +531,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     if (!window)
         return NULL;
 
+    std::string appID_title;
     window->callback = NULL;
     window->display = display;
     window->surface = wl_compositor_create_surface(display->compositor);
@@ -564,9 +565,13 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
 	//rename the appid to Openfde to match the desktop file name openfde.desktop 
         if (appID != "Openfde" && display->task)
             display->task->getAppName(appID_hidl, [&](const hidl_string &value)
-                                      { xdg_toplevel_set_title(window->xdg_toplevel, value.c_str()); });
-        else
+                                      {
+				       appID_title = appID;
+				      xdg_toplevel_set_title(window->xdg_toplevel, value.c_str()); });
+        else{
             xdg_toplevel_set_title(window->xdg_toplevel, appID.c_str());
+	     appID_title = appID;
+	}
 
         if (appID != "Openfde")
             appID = "openfde." + appID;
@@ -617,20 +622,29 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     }
 
 
-    window->xcbwindow = xcb_generate_id(display->xcbconnection);
+     window->xcbwindow = xcb_generate_id(display->xcbconnection);
 
     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
     uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
 
     xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
                             XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
+    xcb_change_property(
+        display->xcbconnection,
+        XCB_PROP_MODE_REPLACE,
+        window->xcbwindow,
+        XCB_ATOM_WM_NAME,
+        XCB_ATOM_STRING,
+        8,
+        strlen(appID_title.c_str()),
+        appID_title.c_str()
+    );
     ALOGE("gy xcreate xcb window");
+    window->xcbgc = xcb_generate_id(display->xcbconnection);
+    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
     xcb_map_window(display->xcbconnection, window->xcbwindow);
     // xcb_flush(pdev->display->xcbconnection);
-
-    window->xcbgc = xcb_generate_id(display->xcbconnection);
-    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
 
     xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);

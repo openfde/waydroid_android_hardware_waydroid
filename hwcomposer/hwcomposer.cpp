@@ -300,8 +300,14 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL) {
+		    xcb_window_t xcb_window;
+		    if (pdev->use_subsurface){
+			    xcb_window=xcb_generate_id(pdev->display->xcbconnection);
+		    }else{
+			    xcb_window=window->xcbwindow;
+		    }
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-                xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, window->xcbwindow,
+                xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap,xcb_window,
                     width * height * 4, width, height,drm_handle->stride, 24, 32, drm_handle->prime_fd);
                 xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
                 // xcb_flush(pdev->display->xcbconnection);
