@@ -267,7 +267,11 @@ struct window {
     struct display *display;
     xcb_window_t xcbwindow;
     xcb_gcontext_t xcbgc;
+    xcb_pixmap_t xcbpixmap;
     int dri3_fd;
+    std::map<size_t, xcb_window_t> xcbwindows;
+    std::map<size_t, int> dri3_fds;
+    std::map<size_t, xcb_gcontext_t> xcbgcs;
     struct wl_surface *surface;
     struct wp_viewport *viewport;
     struct wl_shell_surface *shell_surface;
