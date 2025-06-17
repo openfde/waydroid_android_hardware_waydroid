@@ -1052,8 +1052,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                               &feedback_listener, pdev);
         }
         if (false) {
-        //if (pdev->use_subsurface ) {
-            ALOGE("gy before fist copy area");
+        if (pdev->use_subsurface ) {
             xcb_copy_area(pdev->display->xcbconnection,
                         buf->xcbpixmap,         // 源 Pixmap
                         window->xcbwindows[window->lastLayer],     // 目标窗口
@@ -1063,19 +1062,49 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         buf->width,          // 宽度
                         buf->height          // 高度
                     );
-                    //tijiao main
-             ALOGE("gy after fist copy area");
-        }else {
-             xcb_copy_area(pdev->display->xcbconnection,
-                        buf->xcbpixmap,         // 源 Pixmap
+                    xcb_pixmap_t transparent_pixmap = xcb_generate_id(pdev->display->xcbconnection);
+                    xcb_create_pixmap(
+                        pdev->display->xcbconnection,
+                        32, // depth for ARGB
+                        transparent_pixmap,
+                        window->xcbwindow,
+                        buf->width,
+                        buf->height
+                    );
+
+                    // Fill the pixmap with fully transparent pixels
+                    xcb_gcontext_t tmp_gc = xcb_generate_id(pdev->display->xcbconnection);
+                    uint32_t mask = 0;
+                    xcb_create_gc(pdev->display->xcbconnection, tmp_gc, transparent_pixmap, mask, NULL);
+
+                    xcb_rectangle_t rect = {0, 0, (uint16_t)buf->width, (uint16_t)buf->height};
+                    xcb_change_gc(pdev->display->xcbconnection, tmp_gc, XCB_GC_FOREGROUND, (uint32_t[]){0x00000000});
+                    xcb_poly_fill_rectangle(pdev->display->xcbconnection, transparent_pixmap, tmp_gc, 1, &rect);
+
+                    xcb_free_gc(pdev->display->xcbconnection, tmp_gc);
+
+                    // Use transparent_pixmap as needed, then free it when done
+                    // xcb_free_pixmap(pdev->display->xcbconnection, transparent_pixmap);
+                    xcb_copy_area(pdev->display->xcbconnection,
+                        transparent_pixmap,         // 源 Pixmap
                         window->xcbwindow,     // 目标窗口
                         window->xcbgc,         // 图形上下文
                         0, 0,           // 源坐标 (x, y)
                         0, 0,
                         buf->width,          // 宽度
                         buf->height          // 高度
-                   );
-       }
+                    );
+        }else {
+            xcb_copy_area(pdev->display->xcbconnection,
+                        buf->xcbpixmap,         // 源 Pixmap
+                        window->xcbwindow,     // 目标窗口
+                        window->xcbgc,         // 图形上下文
+                        0, 0,           // 源坐标 (x, y)
+                        0, 0,           // 目标坐标 (x, y)
+                        buf->width,          // 宽度
+                        buf->height          // 高度
+                    );
+        }
 
         wl_surface_commit(surface);
 

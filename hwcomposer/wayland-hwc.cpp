@@ -91,6 +91,12 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         xcb_free_pixmap(display->xcbconnection, buf->xcbpixmap);
         buf->xcbpixmap = 0;
     }
+
+    if (buf->dri3_fd > 0) {
+        close(buf->dri3_fd);
+        buf->dri3_fd = -1;
+    }
+
     wl_buffer_destroy(buf->buffer);
     if (buf->isShm)
         munmap(buf->shm_data, buf->size);
@@ -484,6 +490,10 @@ destroy_window(struct window *window, bool keep)
     if (window->xcbgc) {
         xcb_free_gc(window->display->xcbconnection, window->xcbgc);
         window->xcbgc = 0;
+    }
+    if (window->dri3_fd > 0) {
+        close(window->dri3_fd);
+        window->dri3_fd = -1;
     }
     xcb_flush(window->display->xcbconnection);
 
