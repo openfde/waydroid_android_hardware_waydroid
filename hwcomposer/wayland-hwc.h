@@ -326,7 +326,7 @@ void
 destroy_display(struct display *display);
 
 void
-destroy_window(struct display *display, struct window *window, bool keep = false);
+destroy_window(struct window *window, bool keep = false);
 struct window *
 create_window(struct display *display, bool with_dummy, std::string appID, std::string taskID, hwc_color_t color);
 void

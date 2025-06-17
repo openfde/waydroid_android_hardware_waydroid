@@ -99,7 +99,7 @@ static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, 
 static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
     auto it = pdev->display->buffer_map.find(handle);
     if (it != pdev->display->buffer_map.end()) {
-        destroy_buffer(pdev->display,(it->second);
+        destroy_buffer(pdev->display,it->second);
         pdev->display->buffer_map.erase(it);
     }
 }
@@ -677,7 +677,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         // Clear all open windows
         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
             if (it->second)
-                destroy_window(pdev->display,it->second);
+                destroy_window(it->second);
         }
         pdev->windows.clear();
         for (size_t layer = 0; layer < contents->numHwLayers; layer++) {
@@ -693,7 +693,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         if (pdev->windows.find(active_apps) == pdev->windows.end() || !pdev->windows[active_apps]->isActive) {
             for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
                 if (it->second) {
-                    destroy_window(pdev->display, it->second);
+                    destroy_window(it->second);
                 }
             }
             pdev->windows.clear();
@@ -734,7 +734,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         if (!showWindow) {
             for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
                 if (it->second)
-                    destroy_window(pdev->display,it->second);
+                    destroy_window(it->second);
             }
             pdev->windows.clear();
             for (size_t layer = 0; layer < contents->numHwLayers; layer++) {
@@ -762,7 +762,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         }
                     }
                     if (shouldCloseLeftover) {
-                        destroy_window(pdev->display,it->second);
+                        destroy_window(it->second);
                         pdev->windows.erase(it++);
                         shouldCloseLeftover = true;
                         std::string windows_size_str = std::to_string(pdev->windows.size());
@@ -804,7 +804,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             // This window ID doesn't match with any selected app IDs from prop, so kill it
             if (!foundApp || (it->second && !it->second->isActive)) {
                 if (it->second)
-                    destroy_window(pdev->display,it->second);
+                    destroy_window(it->second);
                 pdev->windows.erase(it++);
                 std::string windows_size_str = std::to_string(pdev->windows.size());
                 property_set("waydroid.open_windows", windows_size_str.c_str());
@@ -1071,7 +1071,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 
         if (window->snapshot_buffer) {
             // Snapshot buffer should be detached by now, clean up
-            destroy_buffer(window->snapshot_buffer);
+            destroy_buffer(pdev->display,window->snapshot_buffer);
             window->snapshot_buffer = nullptr;
         }
 
@@ -1410,7 +1410,7 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
         property_set("waydroid.active_apps", "Openfde");
         property_set("waydroid.open_windows", "1");
     } else {
-        destroy_window(pdev->display,first_window);
+        destroy_window(first_window);
     }
 
     if (pdev->display->refresh > 1000 && pdev->display->refresh < 1000000)
