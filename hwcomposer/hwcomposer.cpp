@@ -307,16 +307,16 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 				    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
 				    uint32_t values[2] = { 0, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
 				    xcb_create_window(
-					pdev->display->xcbconnection,
-					XCB_COPY_FROM_PARENT,         // depth
-					child_window,                 // window Id
-					window->xcbwindow,            // parent window
-					0, 0,                         // x, y
-					drm_handle->width, drm_handle->height,                // width, height
-					0,                            // border width
-					XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
-					XCB_COPY_FROM_PARENT,         // visual
-					mask, values                  // masks
+                        pdev->display->xcbconnection,
+                        XCB_COPY_FROM_PARENT,         // depth
+                        child_window,                 // window Id
+                        window->xcbwindow,            // parent window
+                        0, 0,                         // x, y
+                        drm_handle->width, drm_handle->height,                // width, height
+                        0,                            // border width
+                        XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
+                        XCB_COPY_FROM_PARENT,         // visual
+                        mask, values                  // masks
 				    );
 				    window->xcbwindows[window->lastLayer] = child_window;
 				    xcb_map_window(pdev->display->xcbconnection, child_window);
@@ -325,22 +325,25 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 				    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, xcbwindow, 0);
 				    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(pdev->display->xcbconnection, dri3_cookie, NULL);
 				    if (!dri3_reply) {
-					ALOGE("Cannot open DRI3 connection");
+					    ALOGE("Cannot open DRI3 connection");
 				    }
 				    int dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(pdev->display->xcbconnection, dri3_reply)[0] : -1;
 				    free(dri3_reply);
 				    if (dri3_fd < 0) {
-					ALOGE("Cannot get DRI3 file descriptor");
+					    ALOGE("Cannot get DRI3 file descriptor");
 				    }
 					window->dri3_fds[window->lastLayer] = dri3_fd;
 					xcbwindow=child_window;
 			      	}
 				xcbwindow = window->xcbwindows[window->lastLayer];
 			 }
-
+             int x11_fd = dup(drm_handle->prime_fd);
+             if (x11_fd >= 0) {
+                 fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
+             }
 			buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
 			xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
-			    width * height * 4, width, height,drm_handle->stride, 24, 32, drm_handle->prime_fd);
+			    width * height * 4, width, height,drm_handle->stride, 24, 32, x11_fd);
 			xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
 			// xcb_flush(pdev->display->xcbconnection);
 
@@ -481,7 +484,14 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
 
         setup_viewport_destination(window->viewports[window->lastLayer], layer->displayFrame, pdev->display);
     }
-
+    if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
+        xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
+        xcb_configure_window_value_list_t values;
+        values.x = floor(layer->displayFrame.left / pdev->display->scale);
+        values.y = floor(layer->displayFrame.top / pdev->display->scale);
+        uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
+        xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
+    }
     wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
                                floor(layer->displayFrame.left / pdev->display->scale),
                                floor(layer->displayFrame.top / pdev->display->scale));
