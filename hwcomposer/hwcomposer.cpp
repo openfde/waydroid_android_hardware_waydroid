@@ -1047,7 +1047,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                               &feedback_listener, pdev);
         }
         if (pdev->use_subsurface ) {
-
             xcb_configure_window_value_list_t size_values;
             size_values.width = buf->width;
             size_values.height = buf->height;
@@ -1071,7 +1070,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             xcb_rectangle_t rect = {0, 0, (uint16_t)buf->width, (uint16_t)buf->height};
             xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_FOREGROUND, (uint32_t[]){0x00ff00});
             xcb_poly_fill_rectangle(pdev->display->xcbconnection, transparent_pixmap, window->xcbgc, 1, &rect);
-            ALOG("gy main window width%d,height %d",buf->width,buf->height);
+            ALOGE("gy main window width%d,height %d",buf->width,buf->height);
 
             // Use transparent_pixmap as needed, then free it when done
             // xcb_free_pixmap(pdev->display->xcbconnection, transparent_pixmap);
@@ -1133,6 +1132,10 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     if (it->second->surfaces.find(l) != it->second->surfaces.end()) {
                         wl_surface_attach(it->second->surfaces[l], NULL, 0, 0);
                         wl_surface_commit(it->second->surfaces[l]);
+                        if (it->second->xcbwindows.find(l) != it->second->xcbwindows.end()) {
+                            xcb_destroy_window(pdev->display->xcbconnection, it->second->xcbwindows[l]);
+                            it->second->xcbwindows.erase(l);
+                        }
                     }
                 }
             }
