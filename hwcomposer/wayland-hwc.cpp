@@ -562,6 +562,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     window->bg_buffer = NULL;
     window->bg_surface = NULL;
     window->bg_subsurface = NULL;
+    window->xcbwindow = 0;
 
     bool calibrating = !display->height || !display->width;
 
@@ -642,41 +643,41 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     }
 
 
-     window->xcbwindow = xcb_generate_id(display->xcbconnection);
+    //  window->xcbwindow = xcb_generate_id(display->xcbconnection);
 
-    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-    uint32_t value_list[] = {display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
+    // uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+    // uint32_t value_list[] = {display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
 
-    xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
-                            XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
-    xcb_change_property(
-        display->xcbconnection,
-        XCB_PROP_MODE_REPLACE,
-        window->xcbwindow,
-        XCB_ATOM_WM_NAME,
-        XCB_ATOM_STRING,
-        8,
-        strlen(appID_title.c_str()),
-        appID_title.c_str()
-    );
-    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
-    window->xcbgc = xcb_generate_id(display->xcbconnection);
-    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
+    // xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
+    //                         XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
+    // xcb_change_property(
+    //     display->xcbconnection,
+    //     XCB_PROP_MODE_REPLACE,
+    //     window->xcbwindow,
+    //     XCB_ATOM_WM_NAME,
+    //     XCB_ATOM_STRING,
+    //     8,
+    //     strlen(appID_title.c_str()),
+    //     appID_title.c_str()
+    // );
+    // ALOGE("gy xcreate xcb window %s",appID_title.c_str());
+    // window->xcbgc = xcb_generate_id(display->xcbconnection);
+    // xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
-    xcb_map_window(display->xcbconnection, window->xcbwindow);
+    // xcb_map_window(display->xcbconnection, window->xcbwindow);
     // xcb_flush(pdev->display->xcbconnection);
 
 
-    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
-    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
-    if (!dri3_reply) {
-        ALOGE("Cannot open DRI3 connection");
-    }
-    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
-    free(dri3_reply);
-    if (window->dri3_fd < 0) {
-        ALOGE("Cannot get DRI3 file descriptor");
-    }
+    // xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
+    // xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
+    // if (!dri3_reply) {
+    //     ALOGE("Cannot open DRI3 connection");
+    // }
+    // window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
+    // free(dri3_reply);
+    // if (window->dri3_fd < 0) {
+    //     ALOGE("Cannot get DRI3 file descriptor");
+    // }
 
     // No subsurface background for us!
     if (!use_subsurfaces && !display->subcompositor)

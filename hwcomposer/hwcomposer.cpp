@@ -300,6 +300,44 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL) {
+                if (window->xcbwindow == 0 ){
+                    window->xcbwindow = xcb_generate_id(pdev->display->xcbconnection);
+
+                    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+                    uint32_t value_list[] = {pdev->display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
+
+                    xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
+                                            XCB_WINDOW_CLASS_INPUT_OUTPUT, pdev->display->xcbscreen->root_visual, value_mask, value_list);
+                    xcb_change_property(
+                        pdev->display->xcbconnection,
+                        XCB_PROP_MODE_REPLACE,
+                        window->xcbwindow,
+                        XCB_ATOM_WM_NAME,
+                        XCB_ATOM_STRING,
+                        8,
+                        strlen(window->appID.c_str()),
+                        window->appID.c_str()
+                    );
+                    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
+                    window->xcbgc = xcb_generate_id(display->xcbconnection);
+                    xcb_create_gc(pdev->display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
+
+                    xcb_map_window(pdev->display->xcbconnection, window->xcbwindow);
+                    xcb_flush(pdev->display->xcbconnection);
+
+
+                    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, window->xcbwindow, 0);
+                    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(pdev->display->xcbconnection, dri3_cookie, NULL);
+                    if (!dri3_reply) {
+                        ALOGE("Cannot open DRI3 connection");
+                    }
+                    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(pdev->display->xcbconnection, dri3_reply)[0] : -1;
+                    free(dri3_reply);
+                    if (window->dri3_fd < 0) {
+                        ALOGE("Cannot get DRI3 file descriptor");
+                    }
+                }
+                
                 xcb_window_t xcbwindow = window->xcbwindow;
                 ALOGE("xcb first xcbwindow%d", xcbwindow);
                 if (pdev->use_subsurface ) {
