@@ -639,7 +639,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         strlen(appID_title.c_str()),
         appID_title.c_str()
     );
-    ALOGE("gy xcreate xcb window");
+    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
     window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 

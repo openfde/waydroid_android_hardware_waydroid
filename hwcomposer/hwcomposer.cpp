@@ -302,6 +302,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             if (window != NULL) {
 		    xcb_window_t xcbwindow = window->xcbwindow;
 			if (pdev->use_subsurface ) {
+                    ALOGE("gy last layer %d, name is %s",window->lastLayer,window->appID.c_str());
 			      if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
 				    xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
 				    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
