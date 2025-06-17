@@ -339,12 +339,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         window->dri3_fds[window->lastLayer] = dri3_fd;
                     }
                     xcbwindow = window->xcbwindows[window->lastLayer];
-                    xcb_configure_window_value_list_t size_values;
-                    size_values.width = drm_handle->width;
-                    size_values.height = drm_handle->height;
-                    uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-                    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
-                    xcb_flush(pdev->display->xcbconnection);
+                 
 			    }
                 int x11_fd = dup(drm_handle->prime_fd);
                 if (x11_fd >= 0) {
@@ -1052,6 +1047,17 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                               &feedback_listener, pdev);
         }
         if (pdev->use_subsurface ) {
+
+            xcb_configure_window_value_list_t size_values;
+            size_values.width = buf->width;
+            size_values.height = buf->height;
+            uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+            xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
+            xcb_clear_area(pdev->display->xcbconnection, 0, window->xcbwindow, 0, 0, 0, 0);
+
+            xcb_flush(pdev->display->xcbconnection);
+
+
             xcb_pixmap_t transparent_pixmap = xcb_generate_id(pdev->display->xcbconnection);
             xcb_create_pixmap(
                 pdev->display->xcbconnection,
@@ -1063,9 +1069,10 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             );
 
             xcb_rectangle_t rect = {0, 0, (uint16_t)buf->width, (uint16_t)buf->height};
-            xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_FOREGROUND, (uint32_t[]){0x00000000});
+            xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_FOREGROUND, (uint32_t[]){0x00ff00});
             xcb_poly_fill_rectangle(pdev->display->xcbconnection, transparent_pixmap, window->xcbgc, 1, &rect);
-            ALOG("gy main window width%d,height",buf->width,buf->height)
+            ALOG("gy main window width%d,height %d",buf->width,buf->height);
+
             // Use transparent_pixmap as needed, then free it when done
             // xcb_free_pixmap(pdev->display->xcbconnection, transparent_pixmap);
             xcb_copy_area(pdev->display->xcbconnection,
@@ -1077,7 +1084,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 buf->width,          // 宽度
                 buf->height         // 高度
             );
-            xcb_clear_area(pdev->display->xcbconnection, 0, window->xcbwindow, 0, 0, 0, 0);
             xcb_copy_area(pdev->display->xcbconnection,
             buf->xcbpixmap,         // 源 Pixmap
             window->xcbwindows[window->lastLayer],     // 目标窗口
