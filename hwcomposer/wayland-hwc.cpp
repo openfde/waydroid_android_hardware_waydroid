@@ -665,7 +665,6 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
     xcb_map_window(display->xcbconnection, window->xcbwindow);
-    xcb_flush(pdev->display->xcbconnection);
 
 
     xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);

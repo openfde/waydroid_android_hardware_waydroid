@@ -318,7 +318,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         strlen(window->appID.c_str()),
                         window->appID.c_str()
                     );
-                    window->xcbgc = xcb_generate_id(display->xcbconnection);
+                    window->xcbgc = xcb_generate_id(pdev->display->xcbconnection);
                     xcb_create_gc(pdev->display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
                     xcb_map_window(pdev->display->xcbconnection, window->xcbwindow);
@@ -335,6 +335,13 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     if (window->dri3_fd < 0) {
                         ALOGE("Cannot get DRI3 file descriptor");
                     }
+                }else {
+                    xcb_configure_window_value_list_t size_values;
+                    size_values.width = buf->width;
+                    size_values.height = buf->height;
+                    uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+                    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
+                    xcb_fluse(pdev->display->xcbconnection);
                 }
                 
                 xcb_window_t xcbwindow = window->xcbwindow;
