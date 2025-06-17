@@ -338,6 +338,12 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 			      	}
 				xcbwindow = window->xcbwindows[window->lastLayer];
 			 }
+            xcb_configure_window_value_list_t size_values;
+            size_values.width = drm_handle->width;
+            size_values.height = drm_handle->height;
+            uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+            xcb_configure_window(pdev->display->xcbconnection, xcbwindow, size_mask, (uint32_t*)&size_values);
+
              int x11_fd = dup(drm_handle->prime_fd);
              if (x11_fd >= 0) {
                  fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
@@ -485,12 +491,15 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
 
         setup_viewport_destination(window->viewports[window->lastLayer], layer->displayFrame, pdev->display);
     }
+
+    xcb_configure_window_value_list_t values;
+    values.x = floor(layer->displayFrame.left / pdev->display->scale);
+    values.y = floor(layer->displayFrame.top / pdev->display->scale);
+    uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
+    xcb_configure_window(pdev-display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
+
     if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
         xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
-        xcb_configure_window_value_list_t values;
-        values.x = floor(layer->displayFrame.left / pdev->display->scale);
-        values.y = floor(layer->displayFrame.top / pdev->display->scale);
-        uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
         xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
     }
     wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
@@ -1048,8 +1057,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         window->xcbwindows[window->lastLayer],     // 目标窗口
                         window->xcbgcs[window->lastLayer],         // 图形上下文
                         0, 0,           // 源坐标 (x, y)
-                        fb_layer->displayFrame.right - fb_layer->displayFrame.left,   // width
-                        fb_layer->displayFrame.bottom - fb_layer->displayFrame.top,   // height
+                        0, 0,           // 目标坐标 (x, y)
                         buf->width,          // 宽度
                         buf->height          // 高度
                     );
