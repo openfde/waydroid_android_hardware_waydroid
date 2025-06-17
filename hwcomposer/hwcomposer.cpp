@@ -301,7 +301,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL) {
 		    xcb_window_t xcbwindow = window->xcbwindow;
-			if (pdev->use_subsurface ) {
+			if (false ) {
                     ALOGE("gy last layer %d, name is %s",window->lastLayer,window->appID.c_str());
 			      if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
 				    xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
@@ -319,6 +319,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         XCB_COPY_FROM_PARENT,         // visual
                         mask, values                  // masks
 				    );
+                    xcb_configure_window(pdev->display->xcbconnection, child_window, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
 				    window->xcbwindows[window->lastLayer] = child_window;
 				    xcb_map_window(pdev->display->xcbconnection, child_window);
 				    window->xcbgcs[window->lastLayer] = xcb_generate_id(pdev->display->xcbconnection);
@@ -496,7 +497,7 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
     values.x = floor(layer->displayFrame.left / pdev->display->scale);
     values.y = floor(layer->displayFrame.top / pdev->display->scale);
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
-    xcb_configure_window(pdev-display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
+    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
 
     if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
         xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
@@ -1050,7 +1051,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             wp_presentation_feedback_add_listener(buf->feedback,
                               &feedback_listener, pdev);
         }
-        if (pdev->use_subsurface ) {
+        if (false) {
+        //if (pdev->use_subsurface ) {
             ALOGE("gy before fist copy area");
             xcb_copy_area(pdev->display->xcbconnection,
                         buf->xcbpixmap,         // 源 Pixmap
@@ -1065,7 +1067,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
              ALOGE("gy after fist copy area");
         }else {
              xcb_copy_area(pdev->display->xcbconnection,
-                       buf->xcbpixmap,         // 源 Pixmap
+                        buf->xcbpixmap,         // 源 Pixmap
                         window->xcbwindow,     // 目标窗口
                         window->xcbgc,         // 图形上下文
                         0, 0,           // 源坐标 (x, y)
