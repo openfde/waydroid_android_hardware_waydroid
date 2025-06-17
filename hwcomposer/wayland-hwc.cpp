@@ -86,7 +86,11 @@ static void handle_pinch_update(void *data, struct zwp_pointer_gesture_pinch_v1 
 static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t serial, uint32_t time, int cancelled);
 
 void
-destroy_buffer(struct buffer* buf) {
+destroy_buffer(struct display * display ,struct buffer* buf) {
+    if (buf->xcb_pixmap) {
+        xcb_free_pixmap(display->xcbconnection, buf->xcb_pixmap);
+        buf->xcb_pixmap = 0;
+    }
     wl_buffer_destroy(buf->buffer);
     if (buf->isShm)
         munmap(buf->shm_data, buf->size);
@@ -427,7 +431,7 @@ xdg_toplevel_handle_close(void *data, struct xdg_toplevel *)
     }
 
     std::scoped_lock lock(window->display->windowsMutex);
-    destroy_window(window, true);
+    destroy_window(pdev->display, window, true);
 }
 
 static const struct xdg_toplevel_listener xdg_toplevel_listener = {
@@ -469,8 +473,20 @@ struct wl_shell_surface_listener shell_surface_listener = {
 };
 
 void
-destroy_window(struct window *window, bool keep)
-{
+destroy_window(struct display * display ,struct window *window, bool keep)
+{   
+    // 清除X11窗口和相关缓存
+    if (window->xcbwindow) {
+        xcb_unmap_window(window->display->xcbconnection, window->xcbwindow);
+        xcb_destroy_window(window->display->xcbconnection, window->xcbwindow);
+        window->xcbwindow = 0;
+    }
+    if (window->xcbgc) {
+        xcb_free_gc(window->display->xcbconnection, window->xcbgc);
+        window->xcbgc = 0;
+    }
+    xcb_flush(window->display->xcbconnection);
+
     if (window->isActive) {
         if (window->callback)
             wl_callback_destroy(window->callback);

@@ -300,7 +300,7 @@ handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
         uint32_t, uint32_t, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t, wl_fixed_t);
 
 void
-destroy_buffer(struct buffer* buf);
+destroy_buffer(struct display *display ,struct buffer* buf);
 
 int
 create_android_wl_buffer(struct display *display, struct buffer *buffer,
@@ -326,7 +326,7 @@ void
 destroy_display(struct display *display);
 
 void
-destroy_window(struct window *window, bool keep = false);
+destroy_window(struct display *display, struct window *window, bool keep = false);
 struct window *
 create_window(struct display *display, bool with_dummy, std::string appID, std::string taskID, hwc_color_t color);
 void
