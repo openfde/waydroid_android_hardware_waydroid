@@ -307,20 +307,18 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
                         uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
                         uint32_t values[2] = { 0, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
-                        xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, child_window, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
-                                XCB_WINDOW_CLASS_INPUT_OUTPUT, pdev->display->xcbscreen->root_visual, mask, values);
-                        // xcb_create_window(
-                        //     pdev->display->xcbconnection,
-                        //     XCB_COPY_FROM_PARENT,         // depth
-                        //     child_window,                 // window Id
-                        //     window->xcbwindow,            // parent window
-                        //     0, 0,                         // x, y
-                        //     drm_handle->width, drm_handle->height,                // width, height
-                        //     0,                            // border width
-                        //     XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
-                        //     XCB_COPY_FROM_PARENT,         // visual
-                        //     mask, values                  // masks
-                        // );
+                        xcb_create_window(
+                            pdev->display->xcbconnection,
+                            XCB_COPY_FROM_PARENT,         // depth
+                            child_window,                 // window Id
+                            window->xcbwindow,            // parent window
+                            0, 0,                         // x, y
+                            drm_handle->width, drm_handle->height,                // width, height
+                            0,                            // border width
+                            XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
+                            XCB_COPY_FROM_PARENT,         // visual
+                            mask, values                  // masks
+                        );
                         xcb_configure_window(pdev->display->xcbconnection, child_window, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
                         window->xcbwindows[window->lastLayer] = child_window;
                         xcb_map_window(pdev->display->xcbconnection, child_window);
@@ -346,6 +344,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
                 }
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+                ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
                 xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
                     width * height * 4, width, height,drm_handle->stride, 24, 32, x11_fd);
                 xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
@@ -1133,8 +1132,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         wl_surface_attach(it->second->surfaces[l], NULL, 0, 0);
                         wl_surface_commit(it->second->surfaces[l]);
                         if (it->second->xcbwindows.find(l) != it->second->xcbwindows.end()) {
-                            xcb_destroy_window(pdev->display->xcbconnection, it->second->xcbwindows[l]);
-                            it->second->xcbwindows.erase(l);
+                            xcb_clear_window(pdev->display->xcbconnection, it->second->xcbwindows[l]);
                         }
                     }
                 }
