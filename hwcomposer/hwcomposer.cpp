@@ -1065,7 +1065,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             xcb_rectangle_t rect = {0, 0, (uint16_t)buf->width, (uint16_t)buf->height};
             xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_FOREGROUND, (uint32_t[]){0x00000000});
             xcb_poly_fill_rectangle(pdev->display->xcbconnection, transparent_pixmap, window->xcbgc, 1, &rect);
-
+            ALOG("gy main window width%d,height",buf->width,buf->height)
             // Use transparent_pixmap as needed, then free it when done
             // xcb_free_pixmap(pdev->display->xcbconnection, transparent_pixmap);
             xcb_copy_area(pdev->display->xcbconnection,
@@ -1077,6 +1077,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 buf->width,          // 宽度
                 buf->height         // 高度
             );
+            xcb_clear_area(pdev->display->xcbconnection, 0, window->xcbwindow, 0, 0, 0, 0);
             xcb_copy_area(pdev->display->xcbconnection,
             buf->xcbpixmap,         // 源 Pixmap
             window->xcbwindows[window->lastLayer],     // 目标窗口
