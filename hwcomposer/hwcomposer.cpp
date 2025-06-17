@@ -339,14 +339,13 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         window->dri3_fds[window->lastLayer] = dri3_fd;
                     }
                     xcbwindow = window->xcbwindows[window->lastLayer];
-			    }else {
                     xcb_configure_window_value_list_t size_values;
                     size_values.width = drm_handle->width;
                     size_values.height = drm_handle->height;
                     uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
                     xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
                     xcb_flush(pdev->display->xcbconnection);
-                }
+			    }
                 int x11_fd = dup(drm_handle->prime_fd);
                 if (x11_fd >= 0) {
                     fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
