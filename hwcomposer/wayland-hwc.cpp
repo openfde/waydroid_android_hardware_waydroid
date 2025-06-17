@@ -91,12 +91,6 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         xcb_free_pixmap(display->xcbconnection, buf->xcbpixmap);
         buf->xcbpixmap = 0;
     }
-
-    if (buf->dri3_fd > 0) {
-        close(buf->dri3_fd);
-        buf->dri3_fd = -1;
-    }
-
     wl_buffer_destroy(buf->buffer);
     if (buf->isShm)
         munmap(buf->shm_data, buf->size);

@@ -301,7 +301,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL) {
 		    xcb_window_t xcbwindow = window->xcbwindow;
-			if (false ) {
+        	if (pdev->use_subsurface ) {
                     ALOGE("gy last layer %d, name is %s",window->lastLayer,window->appID.c_str());
 			      if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
 				    xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
@@ -1051,7 +1051,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             wp_presentation_feedback_add_listener(buf->feedback,
                               &feedback_listener, pdev);
         }
-        if (false) {
         if (pdev->use_subsurface ) {
             xcb_copy_area(pdev->display->xcbconnection,
                         buf->xcbpixmap,         // 源 Pixmap
