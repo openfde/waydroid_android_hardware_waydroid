@@ -300,69 +300,68 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL) {
-		    xcb_window_t xcbwindow = window->xcbwindow;
-        	if (pdev->use_subsurface ) {
+                xcb_window_t xcbwindow = window->xcbwindow;
+                if (pdev->use_subsurface ) {
                     ALOGE("gy last layer %d, name is %s",window->lastLayer,window->appID.c_str());
-			      if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
-				    xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
-				    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-				    uint32_t values[2] = { 0, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
-                    xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, child_window, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
-                            XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
-				    // xcb_create_window(
-                    //     pdev->display->xcbconnection,
-                    //     XCB_COPY_FROM_PARENT,         // depth
-                    //     child_window,                 // window Id
-                    //     window->xcbwindow,            // parent window
-                    //     0, 0,                         // x, y
-                    //     drm_handle->width, drm_handle->height,                // width, height
-                    //     0,                            // border width
-                    //     XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
-                    //     XCB_COPY_FROM_PARENT,         // visual
-                    //     mask, values                  // masks
-				    // );
-                    xcb_configure_window(pdev->display->xcbconnection, child_window, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
-				    window->xcbwindows[window->lastLayer] = child_window;
-				    xcb_map_window(pdev->display->xcbconnection, child_window);
-				    window->xcbgcs[window->lastLayer] = xcb_generate_id(pdev->display->xcbconnection);
-				    xcb_create_gc(pdev->display->xcbconnection,window->xcbgcs[window->lastLayer], window->xcbwindows[window->lastLayer], 0, NULL);
-				    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, xcbwindow, 0);
-				    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(pdev->display->xcbconnection, dri3_cookie, NULL);
-				    if (!dri3_reply) {
-					    ALOGE("Cannot open DRI3 connection");
-				    }
-				    int dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(pdev->display->xcbconnection, dri3_reply)[0] : -1;
-				    free(dri3_reply);
-				    if (dri3_fd < 0) {
-					    ALOGE("Cannot get DRI3 file descriptor");
-				    }
-					window->dri3_fds[window->lastLayer] = dri3_fd;
-					xcbwindow=child_window;
-			      	}
-				xcbwindow = window->xcbwindows[window->lastLayer];
-			 }
-            xcb_configure_window_value_list_t size_values;
-            size_values.width = drm_handle->width;
-            size_values.height = drm_handle->height;
-            uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-            xcb_configure_window(pdev->display->xcbconnection, xcbwindow, size_mask, (uint32_t*)&size_values);
+                    if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
+                        xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
+                        uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+                        uint32_t values[2] = { 0, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+                        xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, child_window, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
+                                XCB_WINDOW_CLASS_INPUT_OUTPUT, pdev->display->xcbscreen->root_visual, mask, values);
+                        // xcb_create_window(
+                        //     pdev->display->xcbconnection,
+                        //     XCB_COPY_FROM_PARENT,         // depth
+                        //     child_window,                 // window Id
+                        //     window->xcbwindow,            // parent window
+                        //     0, 0,                         // x, y
+                        //     drm_handle->width, drm_handle->height,                // width, height
+                        //     0,                            // border width
+                        //     XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
+                        //     XCB_COPY_FROM_PARENT,         // visual
+                        //     mask, values                  // masks
+                        // );
+                        xcb_configure_window(pdev->display->xcbconnection, child_window, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
+                        window->xcbwindows[window->lastLayer] = child_window;
+                        xcb_map_window(pdev->display->xcbconnection, child_window);
+                        window->xcbgcs[window->lastLayer] = xcb_generate_id(pdev->display->xcbconnection);
+                        xcb_create_gc(pdev->display->xcbconnection,window->xcbgcs[window->lastLayer], window->xcbwindows[window->lastLayer], 0, NULL);
+                        xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, xcbwindow, 0);
+                        xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(pdev->display->xcbconnection, dri3_cookie, NULL);
+                        if (!dri3_reply) {
+                            ALOGE("Cannot open DRI3 connection");
+                        }
+                        int dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(pdev->display->xcbconnection, dri3_reply)[0] : -1;
+                        free(dri3_reply);
+                        if (dri3_fd < 0) {
+                            ALOGE("Cannot get DRI3 file descriptor");
+                        }
+                        window->dri3_fds[window->lastLayer] = dri3_fd;
+                    }
+                    xcbwindow = window->xcbwindows[window->lastLayer];
+			    }else {
+                    xcb_configure_window_value_list_t size_values;
+                    size_values.width = drm_handle->width;
+                    size_values.height = drm_handle->height;
+                    uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+                    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
+                    xcb_flush(pdev->display->xcbconnection);
+                }
+                int x11_fd = dup(drm_handle->prime_fd);
+                if (x11_fd >= 0) {
+                    fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
+                }
+                buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+                xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
+                    width * height * 4, width, height,drm_handle->stride, 24, 32, x11_fd);
+                xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+                // xcb_flush(pdev->display->xcbconnection);
 
-             int x11_fd = dup(drm_handle->prime_fd);
-             if (x11_fd >= 0) {
-                 fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
-             }
-			buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-			xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
-			    width * height * 4, width, height,drm_handle->stride, 24, 32, x11_fd);
-			xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-			// xcb_flush(pdev->display->xcbconnection);
-
-			if (pixmap_error) {
-			    ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
-			    free(pixmap_error);
-			}
-		}
-
+                if (pixmap_error) {
+                    ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+                    free(pixmap_error);
+                }
+            }
 		} else {
 		    ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
 		    update_shm_buffer(pdev->display, buf);
