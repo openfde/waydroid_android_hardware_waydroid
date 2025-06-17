@@ -301,6 +301,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL) {
                 xcb_window_t xcbwindow = window->xcbwindow;
+                ALOGE("xcb first xcbwindow%d", xcbwindow);
                 if (pdev->use_subsurface ) {
                     ALOGE("gy last layer %d, name is %s",window->lastLayer,window->appID.c_str());
                     if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
@@ -337,7 +338,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         window->dri3_fds[window->lastLayer] = dri3_fd;
                     }
                     xcbwindow = window->xcbwindows[window->lastLayer];
-                 
+                    ALOGE("xcb subsurface xcbwindow %d",xcbwindow);
 			    }
                 int x11_fd = dup(drm_handle->prime_fd);
                 if (x11_fd >= 0) {
@@ -345,6 +346,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 }
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
+                 ALOGE("xcb finall xcbwindow %d",xcbwindow);
                 xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
                     width * height * 4, width, height,drm_handle->stride, 24, 32, x11_fd);
                 xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
@@ -1000,52 +1002,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             ALOGE("Failed to get surface");
             continue;
         }
-        window->last_layer_buffer = buf;
-        window->lastLayer++;
-
-        wl_surface_attach(surface, buf->buffer, 0, 0);
-        if (wl_surface_get_version(surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-            wl_surface_damage_buffer(surface, 0, 0, buf->width, buf->height);
-        else
-            wl_surface_damage(surface, 0, 0, buf->width, buf->height);
-        if (!pdev->display->viewporter && pdev->display->scale > 1) {
-            // With no viewporter the scale is guaranteed to be integer
-            wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
-        }
-        switch (fb_layer->transform) {
-            case HWC_TRANSFORM_FLIP_H:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
-                break;
-            case HWC_TRANSFORM_FLIP_V:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED);
-                break;
-            case HWC_TRANSFORM_ROT_90:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_90);
-                break;
-            case HWC_TRANSFORM_ROT_180:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_180);
-                break;
-            case HWC_TRANSFORM_ROT_270:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_270);
-                break;
-            case HWC_TRANSFORM_FLIP_H_ROT_90:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_270);
-                break;
-            case HWC_TRANSFORM_FLIP_V_ROT_90:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_90);
-                break;
-            default:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_NORMAL);
-                break;
-        }
-
-        struct wp_presentation *pres = window->display->presentation;
-        if (pres) {
-            buf->feedback = wp_presentation_feedback(pres, surface);
-            wp_presentation_feedback_add_listener(buf->feedback,
-                              &feedback_listener, pdev);
-        }
-        if (pdev->use_subsurface ) {
+          if (pdev->use_subsurface ) {
             xcb_configure_window_value_list_t size_values;
             size_values.width = buf->width;
             size_values.height = buf->height;
@@ -1102,6 +1059,52 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         buf->height          // 高度
                     );
         }
+        window->last_layer_buffer = buf;
+        window->lastLayer++;
+
+        wl_surface_attach(surface, buf->buffer, 0, 0);
+        if (wl_surface_get_version(surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+            wl_surface_damage_buffer(surface, 0, 0, buf->width, buf->height);
+        else
+            wl_surface_damage(surface, 0, 0, buf->width, buf->height);
+        if (!pdev->display->viewporter && pdev->display->scale > 1) {
+            // With no viewporter the scale is guaranteed to be integer
+            wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
+        }
+        switch (fb_layer->transform) {
+            case HWC_TRANSFORM_FLIP_H:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+                break;
+            case HWC_TRANSFORM_FLIP_V:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED);
+                break;
+            case HWC_TRANSFORM_ROT_90:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_90);
+                break;
+            case HWC_TRANSFORM_ROT_180:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_180);
+                break;
+            case HWC_TRANSFORM_ROT_270:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_270);
+                break;
+            case HWC_TRANSFORM_FLIP_H_ROT_90:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_270);
+                break;
+            case HWC_TRANSFORM_FLIP_V_ROT_90:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_90);
+                break;
+            default:
+                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_NORMAL);
+                break;
+        }
+
+        struct wp_presentation *pres = window->display->presentation;
+        if (pres) {
+            buf->feedback = wp_presentation_feedback(pres, surface);
+            wp_presentation_feedback_add_listener(buf->feedback,
+                              &feedback_listener, pdev);
+        }
+      
 
         wl_surface_commit(surface);
 
