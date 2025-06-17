@@ -318,7 +318,6 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         strlen(window->appID.c_str()),
                         window->appID.c_str()
                     );
-                    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
                     window->xcbgc = xcb_generate_id(display->xcbconnection);
                     xcb_create_gc(pdev->display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
 
@@ -533,10 +532,10 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
     xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
 
-    if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
-        xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
-        xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
-    }
+    // if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
+    //     xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
+    //     xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
+    // }
     wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
                                floor(layer->displayFrame.left / pdev->display->scale),
                                floor(layer->displayFrame.top / pdev->display->scale));
@@ -1046,10 +1045,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             size_values.height = buf->height;
             uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
             xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
-            xcb_clear_area(pdev->display->xcbconnection, 0, window->xcbwindow, 0, 0, 0, 0);
-
-            xcb_flush(pdev->display->xcbconnection);
-
 
             xcb_pixmap_t transparent_pixmap = xcb_generate_id(pdev->display->xcbconnection);
             xcb_create_pixmap(
@@ -1062,7 +1057,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             );
 
             xcb_rectangle_t rect = {0, 0, (uint16_t)buf->width, (uint16_t)buf->height};
-            xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_FOREGROUND, (uint32_t[]){0x00ff00});
+            xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_BACKGROUND, (uint32_t[]){0x00ff00});
             xcb_poly_fill_rectangle(pdev->display->xcbconnection, transparent_pixmap, window->xcbgc, 1, &rect);
             ALOGE("gy main window width%d,height %d",buf->width,buf->height);
 
@@ -1078,13 +1073,13 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 buf->height         // 高度
             );
             xcb_copy_area(pdev->display->xcbconnection,
-            buf->xcbpixmap,         // 源 Pixmap
-            window->xcbwindows[window->lastLayer],     // 目标窗口
-            window->xcbgcs[window->lastLayer],         // 图形上下文
-            0, 0,           // 源坐标 (x, y)
-            0, 0,           // 目标坐标 (x, y)
-            buf->width,          // 宽度
-            buf->height         // 高度
+                buf->xcbpixmap,         // 源 Pixmap
+                window->xcbwindows[window->lastLayer],     // 目标窗口
+                window->xcbgcs[window->lastLayer],         // 图形上下文
+                0, 0,           // 源坐标 (x, y)
+                0, 0,           // 目标坐标 (x, y)
+                buf->width,          // 宽度
+                buf->height         // 高度
              );
         }else {
             xcb_copy_area(pdev->display->xcbconnection,
@@ -1173,7 +1168,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         wl_surface_attach(it->second->surfaces[l], NULL, 0, 0);
                         wl_surface_commit(it->second->surfaces[l]);
                         if (it->second->xcbwindows.find(l) != it->second->xcbwindows.end()) {
-                            xcb_clear_window(pdev->display->xcbconnection, it->second->xcbwindows[l]);
+                            xcb_clear_area(pdev->display->xcbconnection, 0,it->second->xcbwindows[l],0,0,0,0);
                         }
                     }
                 }
