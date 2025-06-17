@@ -645,7 +645,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
      window->xcbwindow = xcb_generate_id(display->xcbconnection);
 
     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-    uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
+    uint32_t value_list[] = {display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
 
     xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
                             XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);

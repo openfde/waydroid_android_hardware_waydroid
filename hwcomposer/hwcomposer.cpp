@@ -1074,8 +1074,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 window->xcbgc,         // 图形上下文
                 0, 0,           // 源坐标 (x, y)
                 0, 0,
-                struct gralloc_handle_t *(layer->handle)->width,          // 宽度
-                struct gralloc_handle_t *(layer->handle)->height         // 高度
+                buf->width,          // 宽度
+                buf->height         // 高度
             );
             xcb_copy_area(pdev->display->xcbconnection,
             buf->xcbpixmap,         // 源 Pixmap
@@ -1083,8 +1083,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             window->xcbgcs[window->lastLayer],         // 图形上下文
             0, 0,           // 源坐标 (x, y)
             0, 0,           // 目标坐标 (x, y)
-            struct gralloc_handle_t *(layer->handle)->width,          // 宽度
-            struct gralloc_handle_t *(layer->handle)->height         // 高度
+            buf->width,          // 宽度
+            buf->height         // 高度
              );
         }else {
             xcb_copy_area(pdev->display->xcbconnection,
