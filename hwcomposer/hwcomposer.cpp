@@ -93,6 +93,7 @@ struct waydroid_hwc_composer_device_1 {
     bool multi_windows;
 };
 
+int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t main_win);
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
 static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
@@ -299,13 +300,14 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
         if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
-            if (window != NULL) {
+            if (window != NULL && window->lastLayer == 0) {
                 if (window->xcbwindow == 0 ){
                     window->xcbwindow = xcb_generate_id(pdev->display->xcbconnection);
 
                     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
                     uint32_t value_list[] = {pdev->display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
 
+		    ALOGE("create main window->xcbwindow %d",window->xcbwindow);
                     xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
                                             XCB_WINDOW_CLASS_INPUT_OUTPUT, pdev->display->xcbscreen->root_visual, value_mask, value_list);
                     xcb_change_property(
@@ -336,24 +338,24 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         ALOGE("Cannot get DRI3 file descriptor");
                     }
                 }else {
-                    xcb_configure_window_value_list_t size_values;
-                    size_values.width = buf->width;
-                    size_values.height = buf->height;
-                    uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-                    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
-                    xcb_fluse(pdev->display->xcbconnection);
+		    cancel_maximum(pdev->display->xcbconnection, pdev->display->xcbscreen,window->xcbwindow);
+		    ALOGE("adjust main window size %d %d", drm_handle->width,drm_handle->height);
+                    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow,
+				     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
+				    (uint32_t[]){drm_handle->width,drm_handle->height});
+                    xcb_flush(pdev->display->xcbconnection);
                 }
                 
                 xcb_window_t xcbwindow = window->xcbwindow;
-                ALOGE("xcb first xcbwindow%d", xcbwindow);
                 if (pdev->use_subsurface ) {
-                    ALOGE("gy last layer %d, name is %s",window->lastLayer,window->appID.c_str());
+                    ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
                     if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
                         xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
                         uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
                         uint32_t values[2] = { 0, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
-                        xcb_create_window(
-                            pdev->display->xcbconnection,
+                    //xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
+		    ALOGE("create child_window windows[window->lastlayer] %d %d ",child_window,window->lastLayer);
+                        xcb_create_window( pdev->display->xcbconnection,
                             XCB_COPY_FROM_PARENT,         // depth
                             child_window,                 // window Id
                             window->xcbwindow,            // parent window
@@ -382,7 +384,6 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         window->dri3_fds[window->lastLayer] = dri3_fd;
                     }
                     xcbwindow = window->xcbwindows[window->lastLayer];
-                    ALOGE("xcb subsurface xcbwindow %d",xcbwindow);
 			    }
                 int x11_fd = dup(drm_handle->prime_fd);
                 if (x11_fd >= 0) {
@@ -390,9 +391,8 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 }
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
-                 ALOGE("xcb finall xcbwindow %d",xcbwindow);
                 xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
-                    width * height * 4, width, height,drm_handle->stride, 24, 32, x11_fd);
+                    drm_handle->width * drm_handle->height * 4, drm_handle->width, drm_handle->height,drm_handle->stride, 24, 32, x11_fd);
                 xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
                 // xcb_flush(pdev->display->xcbconnection);
 
@@ -520,6 +520,7 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
         sourceCrop.right = layer->sourceCropi.bottom;
         sourceCrop.bottom = layer->sourceCropi.right;
     }
+    ALOGE("frame geo left %d top %d right %d bottom %d lastlayer %d", sourceCrop.left,sourceCrop.top, sourceCrop.right,sourceCrop.bottom, window->lastLayer);
 
     if (pdev->display->viewporter) {
         wp_viewport_set_source(window->viewports[window->lastLayer],
@@ -539,10 +540,10 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
     xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
 
-    // if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
-    //     xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
-    //     xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
-    // }
+     /*if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
+         xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
+         xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
+     }*/
     wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
                                floor(layer->displayFrame.left / pdev->display->scale),
                                floor(layer->displayFrame.top / pdev->display->scale));
@@ -550,6 +551,7 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
     pdev->display->layers[window->surfaces[window->lastLayer]] = {
         .x = layer->displayFrame.left,
         .y = layer->displayFrame.top };
+    ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
     return window->surfaces[window->lastLayer];
 }
 
@@ -1047,13 +1049,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             continue;
         }
           if (pdev->use_subsurface ) {
-            xcb_configure_window_value_list_t size_values;
-            size_values.width = buf->width;
-            size_values.height = buf->height;
-            uint16_t size_mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-            xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, size_mask, (uint32_t*)&size_values);
-
-            xcb_pixmap_t transparent_pixmap = xcb_generate_id(pdev->display->xcbconnection);
+            /*xcb_pixmap_t transparent_pixmap = xcb_generate_id(pdev->display->xcbconnection);
             xcb_create_pixmap(
                 pdev->display->xcbconnection,
                 32, // depth for ARGB
@@ -1079,6 +1075,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 buf->width,          // 宽度
                 buf->height         // 高度
             );
+	    */
             xcb_copy_area(pdev->display->xcbconnection,
                 buf->xcbpixmap,         // 源 Pixmap
                 window->xcbwindows[window->lastLayer],     // 目标窗口
@@ -1551,6 +1548,34 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
 static struct hw_module_methods_t hwc_module_methods = {
     .open = hwc_open,
 };
+
+int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t main_win){
+      // 取消窗口最大化（移除 _NET_WM_STATE_MAXIMIZED_HORZ 和 _NET_WM_STATE_MAXIMIZED_VERT）
+            xcb_intern_atom_cookie_t state_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE"), "_NET_WM_STATE");
+            xcb_intern_atom_cookie_t max_horz_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE_MAXIMIZED_HORZ"), "_NET_WM_STATE_MAXIMIZED_HORZ");
+            xcb_intern_atom_cookie_t max_vert_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE_MAXIMIZED_VERT"), "_NET_WM_STATE_MAXIMIZED_VERT");
+
+            xcb_intern_atom_reply_t *state_atom = xcb_intern_atom_reply(conn, state_cookie, NULL);
+            xcb_intern_atom_reply_t *max_horz_atom = xcb_intern_atom_reply(conn, max_horz_cookie, NULL);
+            xcb_intern_atom_reply_t *max_vert_atom = xcb_intern_atom_reply(conn, max_vert_cookie, NULL);
+
+            if (state_atom && max_horz_atom && max_vert_atom) {
+                xcb_client_message_event_t ev ;
+                ev.response_type = XCB_CLIENT_MESSAGE;
+                ev.format = 32;
+                ev.window = main_win;
+                ev.type = state_atom->atom;
+                ev.data.data32[0] = 0; // _NET_WM_STATE_REMOVE
+                ev.data.data32[1] = max_horz_atom->atom;
+                ev.data.data32[2] = max_vert_atom->atom;
+                ev.data.data32[3] = 1;
+                ev.data.data32[4] = 0;
+                xcb_send_event(conn, 0, screen->root,
+                    XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+                    (const char *)&ev);
+            }
+    return 0;
+}
 
 hwc_module_t HAL_MODULE_INFO_SYM = {
     .common = {
