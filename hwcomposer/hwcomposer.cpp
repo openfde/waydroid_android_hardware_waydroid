@@ -352,7 +352,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
                         xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
                         uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-                        uint32_t values[2] = { 0, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+                        uint32_t values[] = { pdev->display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
                     //xcb_create_window(pdev->display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, pdev->display->xcbscreen->root, 0, 0, drm_handle->width, drm_handle->height, 0,
 		    ALOGE("create child_window windows[window->lastlayer] %d %d ",child_window,window->lastLayer);
                         xcb_create_window( pdev->display->xcbconnection,
@@ -1049,34 +1049,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             continue;
         }
           if (pdev->use_subsurface ) {
-            /*xcb_pixmap_t transparent_pixmap = xcb_generate_id(pdev->display->xcbconnection);
-            xcb_create_pixmap(
-                pdev->display->xcbconnection,
-                32, // depth for ARGB
-                transparent_pixmap,
-                window->xcbwindow,
-                buf->width,
-                buf->height
-            );
-
-            xcb_rectangle_t rect = {0, 0, (uint16_t)buf->width, (uint16_t)buf->height};
-            xcb_change_gc(pdev->display->xcbconnection, window->xcbgc, XCB_GC_BACKGROUND, (uint32_t[]){0x00ff00});
-            xcb_poly_fill_rectangle(pdev->display->xcbconnection, transparent_pixmap, window->xcbgc, 1, &rect);
-            ALOGE("gy main window width%d,height %d",buf->width,buf->height);
-
-            // Use transparent_pixmap as needed, then free it when done
-            // xcb_free_pixmap(pdev->display->xcbconnection, transparent_pixmap);
-            xcb_copy_area(pdev->display->xcbconnection,
-                transparent_pixmap,         // 源 Pixmap
-                window->xcbwindow,     // 目标窗口
-                window->xcbgc,         // 图形上下文
-                0, 0,           // 源坐标 (x, y)
-                0, 0,
-                buf->width,          // 宽度
-                buf->height         // 高度
-            );
-	    */
-            xcb_copy_area(pdev->display->xcbconnection,
+		ALOGE("gy copy_area width %d, height %d", buf->width, buf->height);
+                xcb_copy_area(pdev->display->xcbconnection,
                 buf->xcbpixmap,         // 源 Pixmap
                 window->xcbwindows[window->lastLayer],     // 目标窗口
                 window->xcbgcs[window->lastLayer],         // 图形上下文

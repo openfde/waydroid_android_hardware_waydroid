@@ -81,6 +81,8 @@ using ::android::hardware::hidl_string;
 const int AXIS_TOUCH_SLOT_ID = 8;
 const int AXIS_TOUCH_TRACKING_ID = AXIS_TOUCH_SLOT_ID;
 
+int remove_title(xcb_connection_t *conn, xcb_window_t main_win);
+
 struct buffer;
 static void handle_pinch_update(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t time, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t scale, wl_fixed_t rotation);
 static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t serial, uint32_t time, int cancelled);
@@ -663,8 +665,10 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     ALOGE("gy xcreate xcb window %s",appID_title.c_str());
     window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
+    remove_title(display->xcbconnection, window->xcbwindow);
 
     xcb_map_window(display->xcbconnection, window->xcbwindow);
+
 
 
     xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
@@ -2530,5 +2534,25 @@ destroy_display(struct display *display)
     wl_display_flush(display->display);
     wl_display_disconnect(display->display);
     delete display;
+}
+
+int remove_title(xcb_connection_t *conn, xcb_window_t main_win){
+          // 去掉窗口装饰（如标题栏）
+                    xcb_intern_atom_cookie_t hints_cookie = xcb_intern_atom(conn, 0, strlen("_MOTIF_WM_HINTS"), "_MOTIF_WM_HINTS");
+                    xcb_intern_atom_reply_t *hints_reply = xcb_intern_atom_reply(conn, hints_cookie, NULL);
+                    if (hints_reply) {
+                        struct {
+                            uint32_t flags;
+                            uint32_t functions;
+                            uint32_t decorations;
+                            int32_t input_mode;
+                            uint32_t status;
+                        } motif_hints = {2, 0, 0, 0, 0}; // flags=2, decorations=0
+                        xcb_change_property(conn, XCB_PROP_MODE_REPLACE, main_win,
+                                            hints_reply->atom, hints_reply->atom, 32,
+                                            sizeof(motif_hints) / 4, &motif_hints);
+                        free(hints_reply);
+                    }
+		    return 0;
 }
 
