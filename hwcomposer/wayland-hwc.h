@@ -324,6 +324,7 @@ struct display *
 create_display(const char* gralloc);
 void
 destroy_display(struct display *display);
+int remove_title(xcb_connection_t *conn, xcb_window_t main_win);
 
 void
 destroy_window(struct window *window, bool keep = false);
