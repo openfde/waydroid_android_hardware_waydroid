@@ -313,7 +313,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 		    ALOGE("adjust main window size %d %d", drm_handle->width,drm_handle->height);
                     xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow,
 				     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-				    (uint32_t[]){drm_handle->width,drm_handle->height});
+				    (uint32_t[]){drm_handle->width-20,drm_handle->height-20});
                     xcb_flush(pdev->display->xcbconnection);
                 }
                 
@@ -323,7 +323,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
                         xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
                         uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-                        uint32_t values[] = { pdev->display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+                        uint32_t values[] = { pdev->display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
 		    	ALOGE("create child_window windows[window->lastlayer] %d %d ",child_window,window->lastLayer);
                         xcb_create_window( pdev->display->xcbconnection,
                             XCB_COPY_FROM_PARENT,         // depth
@@ -331,7 +331,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                             window->xcbwindow,            // parent window
 			    //pdev->display->xcbscreen->root,
                             0, 0,                         // x, y
-                            drm_handle->width, drm_handle->height,                // width, height
+                            drm_handle->width-20, drm_handle->height-20,                // width, height
                             0,                            // border width
                             XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
                             XCB_COPY_FROM_PARENT,         // visual
@@ -357,7 +357,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 		    remove_title(pdev->display->xcbconnection,xcbwindow);
 		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow,
 			     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-			    (uint32_t[]){drm_handle->width,drm_handle->height});
+			    (uint32_t[]){drm_handle->width -20 ,drm_handle->height - 20});
 		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
 	        }
 		int x11_fd = dup(drm_handle->prime_fd);
@@ -1031,7 +1031,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 window->xcbwindows[window->lastLayer],     // 目标窗口
                 window->xcbgcs[window->lastLayer],         // 图形上下文
                 0, 0,           // 源坐标 (x, y)
-                0, 0,           // 目标坐标 (x, y)
+                -10, -10,           // 目标坐标 (x, y)
                 buf->width,          // 宽度
                 buf->height         // 高度
              );
