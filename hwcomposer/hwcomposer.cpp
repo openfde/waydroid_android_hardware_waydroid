@@ -297,6 +297,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     int ret = 0;
 
     buf = new struct buffer();
+    buf->xcbpixmap = 0;
     if (pdev->display->gtype == GRALLOC_GBM) {
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
         if (pdev->display->dmabuf) {
@@ -374,6 +375,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
                     free(pixmap_error);
                 }
+		close(x11_fd);
             }
 		} else {
 		    ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
