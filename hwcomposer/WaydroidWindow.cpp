@@ -31,15 +31,17 @@ WaydroidWindow::WaydroidWindow(struct display *display)
 {
 }
 
-static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {
+/*static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {
     handle_relative_motion,
 };
+*/
 
 // Methods from ::vendor::waydroid::window::V1_0::IWaydroidWindow follow.
 Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
-    char property[PROPERTY_VALUE_MAX];
+	ALOGE("%s", packageName.c_str());
+    //char property[PROPERTY_VALUE_MAX];
 
-    if (!mDisplay->wm_base)
+ /*   if (!mDisplay->wm_base)
         return false;
 
     property_get("waydroid.active_apps", property, "Openfde");
@@ -54,15 +56,19 @@ Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
             return true;
         }
     }
+    */
     return false;
 }
 
 // Methods from ::vendor::waydroid::window::V1_1::IWaydroidWindow follow.
 Return<void> WaydroidWindow::setPointerCapture(const hidl_string& packageName, bool enabled) {
-    char property[PROPERTY_VALUE_MAX];
+    /*char property[PROPERTY_VALUE_MAX];
     std::string windowName = packageName;
+    */
+	ALOGE("%s %d", packageName.c_str(),enabled);
 
-    if (!mDisplay->pointer_constraints)
+    return Void();
+   /* if (!mDisplay->pointer_constraints)
         return Void();
 
     if (!mDisplay->pointer)
@@ -106,6 +112,7 @@ Return<void> WaydroidWindow::setPointerCapture(const hidl_string& packageName, b
         }
     }
     return Void();
+    */
 }
 
 // Methods from ::vendor::waydroid::window::V1_2::IWaydroidWindow follow.
@@ -113,14 +120,14 @@ Return<void> WaydroidWindow::setIdleInhibit(const hidl_string& task, bool enable
     char property[PROPERTY_VALUE_MAX];
     std::string taskID = task;
 
-    if (!mDisplay->idle_manager)
+    if (!mDisplay->idle_manager && enabled)
         return Void();
 
     property_get("waydroid.active_apps", property, "Openfde");
     if (!strcmp(property, "Openfde"))
         taskID = "0";
 
-    std::scoped_lock lock(mDisplay->windowsMutex);
+    /*std::scoped_lock lock(mDisplay->windowsMutex);
     for (auto it = mDisplay->windows.begin(); it != mDisplay->windows.end(); it++) {
         struct window* window = it->second;
         if (window && window->isActive && (window->taskID == taskID || taskID == "*")) {
@@ -135,6 +142,7 @@ Return<void> WaydroidWindow::setIdleInhibit(const hidl_string& task, bool enable
             }
         }
     }
+    */
     return Void();
 }
 

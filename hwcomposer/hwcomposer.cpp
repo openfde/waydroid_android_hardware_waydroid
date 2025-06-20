@@ -95,7 +95,7 @@ struct waydroid_hwc_composer_device_1 {
 
 int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t main_win);
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
-static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
+//static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
 static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
     auto it = pdev->display->buffer_map.find(handle);
@@ -106,9 +106,9 @@ static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buff
 }
 
 static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
-    if (!pdev->display->cursor_surface) {
-        return false;
-    }
+    // if (!pdev->display->cursor_surface) {
+    //     return false;
+    // }
 
     std::string layer_name = pdev->display->layer_names[layer];
 
@@ -142,23 +142,23 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         return true;
     }
 
-    wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
-    if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-        wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-    else
-        wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-    if (!pdev->display->viewporter && pdev->display->scale > 1) {
-        // With no viewporter the scale is guaranteed to be integer
-        wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
-    } else if (pdev->display->viewporter && pdev->display->scale != 1) {
-        setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
-    }
+    // wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
+    // if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+    //     wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+    // else
+    //     wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+    // if (!pdev->display->viewporter && pdev->display->scale > 1) {
+    //     // With no viewporter the scale is guaranteed to be integer
+    //     wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
+    // } else if (pdev->display->viewporter && pdev->display->scale != 1) {
+    //     setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
+    // }
 
-    wl_surface_commit(pdev->display->cursor_surface);
-    int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
-    int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
-    wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
-                                  pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
+    // wl_surface_commit(pdev->display->cursor_surface);
+    //int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
+    //int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
+    // wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
+    //                               pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
     pdev->display->additional_refresh_cursor_times++;
 
     return true;
@@ -214,7 +214,7 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
         foundCursorLayer |= update_cursor_surface(pdev, fb_layer, i);
     }
     if(!foundCursorLayer && pdev->display->mouse_icon_addr != -1){
-        wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
+        // wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
         pdev->display->mouse_icon_addr = -1;
         ALOGI("wayland cursor hidden");
     }
@@ -300,8 +300,12 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     buf->xcbpixmap = 0;
     if (pdev->display->gtype == GRALLOC_GBM) {
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
-        if (pdev->display->dmabuf) {
-            ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
+	ALOGE("in gbm");
+        if (1) {
+    	buf->width=drm_handle->width;
+	buf->height=drm_handle->height;
+	ALOGE("in gbm dma buf");
+            // ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL ) {
 		    if (window->lastLayer != 0 ) {
 			    ALOGE("hellolastlayer=1 %d name=%s",window->lastLayer,window->appID.c_str());
@@ -322,8 +326,10 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
                     if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
                         xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
-                        uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-                        uint32_t values[] = { pdev->display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+			   uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+        uint32_t values[] = {pdev->display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION};
+
 		    	ALOGE("create child_window windows[window->lastlayer] %d %d ",child_window,window->lastLayer);
                         xcb_create_window( pdev->display->xcbconnection,
                             XCB_COPY_FROM_PARENT,         // depth
@@ -451,14 +457,45 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     return pdev->display->buffer_map[layer->handle];
 }
 
-static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display)
+/*static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display)
 {
     wp_viewport_set_destination(viewport,
             fmax(1, ceil((frame.right - frame.left) / display->scale)),
             fmax(1, ceil((frame.bottom - frame.top) / display->scale)));
 }
+*/
+static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_layer_1_t * layer, struct window *window, bool use_subsurface){
+    if (!use_subsurface)
+        return  0;
+    hwc_rect_t sourceCrop = layer->sourceCropi;
 
-static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, bool multi)
+    if (layer->transform & HWC_TRANSFORM_ROT_90) {
+        sourceCrop.left = layer->sourceCropi.top;
+        sourceCrop.top = layer->sourceCropi.left;
+        sourceCrop.right = layer->sourceCropi.bottom;
+        sourceCrop.bottom = layer->sourceCropi.right;
+    }
+    ALOGE("frame geo left %d top %d right %d bottom %d lastlayer %d", sourceCrop.left,sourceCrop.top, sourceCrop.right,sourceCrop.bottom, window->lastLayer);
+    xcb_configure_window_value_list_t values;
+    values.x = floor(layer->displayFrame.left / pdev->display->scale);
+    values.y = floor(layer->displayFrame.top / pdev->display->scale);
+    uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
+    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
+
+     /*if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
+         xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
+         xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
+     }*/
+
+    /*pdev->display->layers[window->xcbwindows[window->lastLayer]] = {
+        .x = layer->displayFrame.left,
+        .y = layer->displayFrame.top }; 
+	*/
+    ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
+    return 0;
+}
+
+/*static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, bool multi)
 {
     pdev->display->windows[window->surface] = window;
     if (!multi) {
@@ -516,10 +553,6 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
     xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
 
-     /*if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
-         xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
-         xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
-     }*/
     wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
                                floor(layer->displayFrame.left / pdev->display->scale),
                                floor(layer->displayFrame.top / pdev->display->scale));
@@ -530,6 +563,7 @@ static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pde
     ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
     return window->surfaces[window->lastLayer];
 }
+*/
 
 static long time_to_sleep_to_next_vsync(struct timespec *rt, uint64_t last_vsync_ns, unsigned vsync_period_ns)
 {
@@ -596,42 +630,42 @@ static void* hwc_vsync_thread(void* data) {
     return NULL;
 }
 
-static void
-feedback_sync_output(void *, struct wp_presentation_feedback *,
-             struct wl_output *)
-{
-}
+// static void
+// feedback_sync_output(void *, struct wp_presentation_feedback *,
+//              struct wl_output *)
+// {
+// }
 
-static void
-feedback_presented(void *data,
-           struct wp_presentation_feedback *feedback,
-           uint32_t tv_sec_hi,
-           uint32_t tv_sec_lo,
-           uint32_t tv_nsec,
-           uint32_t,
-           uint32_t,
-           uint32_t,
-           uint32_t)
-{
-    struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
-    wp_presentation_feedback_destroy(feedback);
+// static void
+// feedback_presented(void *data,
+//            struct wp_presentation_feedback *feedback,
+//            uint32_t tv_sec_hi,
+//            uint32_t tv_sec_lo,
+//            uint32_t tv_nsec,
+//            uint32_t,
+//            uint32_t,
+//            uint32_t,
+//            uint32_t)
+// {
+//     struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
+//     wp_presentation_feedback_destroy(feedback);
 
-    pthread_mutex_lock(&pdev->vsync_lock);
-    pdev->last_vsync_ns = (((uint64_t)tv_sec_hi << 32) + tv_sec_lo) * 1e9 + tv_nsec;
-    pthread_mutex_unlock(&pdev->vsync_lock);
-}
+//     pthread_mutex_lock(&pdev->vsync_lock);
+//     pdev->last_vsync_ns = (((uint64_t)tv_sec_hi << 32) + tv_sec_lo) * 1e9 + tv_nsec;
+//     pthread_mutex_unlock(&pdev->vsync_lock);
+// }
 
-static void
-feedback_discarded(void *, struct wp_presentation_feedback *feedback)
-{
-    wp_presentation_feedback_destroy(feedback);
-}
+// static void
+// feedback_discarded(void *, struct wp_presentation_feedback *feedback)
+// {
+//     wp_presentation_feedback_destroy(feedback);
+// }
 
-static const struct wp_presentation_feedback_listener feedback_listener = {
-    feedback_sync_output,
-    feedback_presented,
-    feedback_discarded
-};
+// static const struct wp_presentation_feedback_listener feedback_listener = {
+//     feedback_sync_output,
+//     feedback_presented,
+//     feedback_discarded
+// };
 
 static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                    hwc_display_contents_1_t** displays) {
@@ -943,52 +977,52 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             std::string LayerRawName;
             std::istringstream issLayer(layer_name);
             std::getline(issLayer, LayerRawName, '#');
-            if (LayerRawName == "Sprite" && pdev->display->pointer_surface) {
-                if (pdev->display->cursor_surface) {
-                    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
-                    if (!buf) {
-                        ALOGE("Failed to get wayland buffer");
-                        if (fb_layer->acquireFenceFd != -1) {
-                            close(fb_layer->acquireFenceFd);
-                        }
-                        continue;
-                    }
+            // if (LayerRawName == "Sprite" && pdev->display->pointer_surface) {
+            //     if (pdev->display->cursor_surface) {
+            //         struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
+            //         if (!buf) {
+            //             ALOGE("Failed to get wayland buffer");
+            //             if (fb_layer->acquireFenceFd != -1) {
+            //                 close(fb_layer->acquireFenceFd);
+            //             }
+            //             continue;
+            //         }
 
-                    wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
-                    if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-                        wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-                    else
-                        wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-                    if (!pdev->display->viewporter && pdev->display->scale > 1) {
-                        // With no viewporter the scale is guaranteed to be integer
-                        wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
-                    } else if (pdev->display->viewporter && pdev->display->scale != 1) {
-                        setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
-                    }
+            //         wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
+            //         if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+            //             wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+            //         else
+            //             wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
+            //         if (!pdev->display->viewporter && pdev->display->scale > 1) {
+            //             // With no viewporter the scale is guaranteed to be integer
+            //             wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
+            //         } else if (pdev->display->viewporter && pdev->display->scale != 1) {
+            //             setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
+            //         }
 
-                    wl_surface_commit(pdev->display->cursor_surface);
+            //         wl_surface_commit(pdev->display->cursor_surface);
 
-                    if (fb_layer->acquireFenceFd != -1) {
-                        close(fb_layer->acquireFenceFd);
-                    }
-                    continue;
-                } else {
-                    for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
-                        if (it->second) {
-                            if (it->second->surface == pdev->display->pointer_surface) {
-                                window = it->second;
-                                break;
-                            }
-                            for (auto itt = it->second->surfaces.begin(); itt != it->second->surfaces.end(); itt++) {
-                                if (itt->second == pdev->display->pointer_surface) {
-                                    window = it->second;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            //         if (fb_layer->acquireFenceFd != -1) {
+            //             close(fb_layer->acquireFenceFd);
+            //         }
+            //         continue;
+            //     } else {
+            //         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
+            //             if (it->second) {
+            //                 if (it->second->surface == pdev->display->pointer_surface) {
+            //                     window = it->second;
+            //                     break;
+            //                 }
+            //                 for (auto itt = it->second->surfaces.begin(); itt != it->second->surfaces.end(); itt++) {
+            //                     if (itt->second == pdev->display->pointer_surface) {
+            //                         window = it->second;
+            //                         break;
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
             if (LayerRawName == "InputMethod") {
                 if (pdev->windows.find(LayerRawName) == pdev->windows.end()) {
                     pdev->windows[LayerRawName] = create_window(pdev->display, pdev->use_subsurface, LayerRawName, "none", {0, 0, 0, 0});
@@ -1019,11 +1053,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         // TODO: Implement per-layer explicit synchronization
         fb_layer->releaseFenceFd = -1;
 
-        struct wl_surface *surface = get_surface(pdev, fb_layer, window, pdev->use_subsurface);
-        if (!surface) {
-            ALOGE("Failed to get surface");
-            continue;
-        }
+        // struct wl_surface *surface = get_surface(pdev, fb_layer, window, pdev->use_subsurface);
+        // if (!surface) {
+        //     ALOGE("Failed to get surface");
+        //     continue;
+        // }
+        adjust_window_geo(pdev, fb_layer, window, pdev->use_subsurface);
           if (pdev->use_subsurface ) {
 		ALOGE("gy copy_area width %d, height %d", buf->width, buf->height);
                 xcb_copy_area(pdev->display->xcbconnection,
@@ -1049,51 +1084,51 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         window->last_layer_buffer = buf;
         window->lastLayer++;
 
-        wl_surface_attach(surface, buf->buffer, 0, 0);
-        if (wl_surface_get_version(surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-            wl_surface_damage_buffer(surface, 0, 0, buf->width, buf->height);
-        else
-            wl_surface_damage(surface, 0, 0, buf->width, buf->height);
-        if (!pdev->display->viewporter && pdev->display->scale > 1) {
-            // With no viewporter the scale is guaranteed to be integer
-            wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
-        }
-        switch (fb_layer->transform) {
-            case HWC_TRANSFORM_FLIP_H:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
-                break;
-            case HWC_TRANSFORM_FLIP_V:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED);
-                break;
-            case HWC_TRANSFORM_ROT_90:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_90);
-                break;
-            case HWC_TRANSFORM_ROT_180:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_180);
-                break;
-            case HWC_TRANSFORM_ROT_270:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_270);
-                break;
-            case HWC_TRANSFORM_FLIP_H_ROT_90:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_270);
-                break;
-            case HWC_TRANSFORM_FLIP_V_ROT_90:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_90);
-                break;
-            default:
-                wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_NORMAL);
-                break;
-        }
+        // wl_surface_attach(surface, buf->buffer, 0, 0);
+        // if (wl_surface_get_version(surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+        //     wl_surface_damage_buffer(surface, 0, 0, buf->width, buf->height);
+        // else
+        //     wl_surface_damage(surface, 0, 0, buf->width, buf->height);
+        // if (!pdev->display->viewporter && pdev->display->scale > 1) {
+        //     // With no viewporter the scale is guaranteed to be integer
+        //     wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
+        // }
+        // switch (fb_layer->transform) {
+        //     case HWC_TRANSFORM_FLIP_H:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+        //         break;
+        //     case HWC_TRANSFORM_FLIP_V:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED);
+        //         break;
+        //     case HWC_TRANSFORM_ROT_90:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_90);
+        //         break;
+        //     case HWC_TRANSFORM_ROT_180:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_180);
+        //         break;
+        //     case HWC_TRANSFORM_ROT_270:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_270);
+        //         break;
+        //     case HWC_TRANSFORM_FLIP_H_ROT_90:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_270);
+        //         break;
+        //     case HWC_TRANSFORM_FLIP_V_ROT_90:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_90);
+        //         break;
+        //     default:
+        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_NORMAL);
+        //         break;
+        // }
 
-        struct wp_presentation *pres = window->display->presentation;
-        if (pres) {
-            buf->feedback = wp_presentation_feedback(pres, surface);
-            wp_presentation_feedback_add_listener(buf->feedback,
-                              &feedback_listener, pdev);
-        }
+        // struct wp_presentation *pres = window->display->presentation;
+        // if (pres) {
+        //     buf->feedback = wp_presentation_feedback(pres, surface);
+        //     wp_presentation_feedback_add_listener(buf->feedback,
+        //                       &feedback_listener, pdev);
+        // }
       
 
-        wl_surface_commit(surface);
+        // wl_surface_commit(surface);
 
         if (window->snapshot_buffer) {
             // Snapshot buffer should be detached by now, clean up
@@ -1119,37 +1154,39 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 // Neutralize unused surfaces
                 for (size_t l = it->second->lastLayer; l < it->second->surfaces.size(); l++) {
                     if (it->second->surfaces.find(l) != it->second->surfaces.end()) {
-                        wl_surface_attach(it->second->surfaces[l], NULL, 0, 0);
-                        wl_surface_commit(it->second->surfaces[l]);
-                        if (it->second->xcbwindows.find(l) != it->second->xcbwindows.end()) {
-                            xcb_clear_area(pdev->display->xcbconnection, 0,it->second->xcbwindows[l],0,0,0,0);
-                        }
+                        // wl_surface_attach(it->second->surfaces[l], NULL, 0, 0);
+                        // wl_surface_commit(it->second->surfaces[l]);
                     }
                 }
+                for (size_t l = it->second->lastLayer; l < it->second->xcbwindows.size();l++){
+                      if (it->second->xcbwindows.find(l) != it->second->xcbwindows.end()) {
+                            xcb_clear_area(pdev->display->xcbconnection, 0,it->second->xcbwindows[l],0,0,0,0);
+                        }
+                } 
             }
         }
         pdev->display->geo_changed = false;
     }
 
-    if (!pdev->multi_windows && single_layer_tid.length() && active_apps != "Openfde") {
-        for (auto const& [layer_tid, window] : pdev->windows) {
-            // Replace inactive app window buffer with snapshot in staged mode
-            if (layer_tid != single_layer_tid && !window->snapshot_buffer) {
-                pdev->display->egl_work_queue.push_back(std::bind(snapshot_inactive_app_window, pdev->display, window));
-            }
-        }
-        if (!pdev->display->egl_work_queue.empty()) {
-            sem_post(&pdev->display->egl_go);
-            sem_wait(&pdev->display->egl_done);
-        }
-    }
+    // if (!pdev->multi_windows && single_layer_tid.length() && active_apps != "Openfde") {
+    //     for (auto const& [layer_tid, window] : pdev->windows) {
+    //         // Replace inactive app window buffer with snapshot in staged mode
+    //         if (layer_tid != single_layer_tid && !window->snapshot_buffer) {
+    //             pdev->display->egl_work_queue.push_back(std::bind(snapshot_inactive_app_window, pdev->display, window));
+    //         }
+    //     }
+    //     if (!pdev->display->egl_work_queue.empty()) {
+    //         sem_post(&pdev->display->egl_go);
+    //         sem_wait(&pdev->display->egl_done);
+    //     }
+    // }
 
-    if (pdev->use_subsurface)
-        for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
-            if (it->second)
-                wl_surface_commit(it->second->surface);
+    // if (pdev->use_subsurface)
+    //     for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
+    //         if (it->second)
+    //             wl_surface_commit(it->second->surface);
     xcb_flush(pdev->display->xcbconnection); // 确保请求发送
-    wl_display_flush(pdev->display->display);
+    // wl_display_flush(pdev->display->display);
 
 sync:
     sw_sync_timeline_inc(pdev->timeline_fd, 1);
@@ -1294,7 +1331,7 @@ static int hwc_close(hw_device_t* dev) {
     return 0;
 }
 
-static void* hwc_wayland_thread(void* data) {
+/*static void* hwc_wayland_thread(void* data) {
     struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
     int ret = 0;
 
@@ -1307,6 +1344,7 @@ static void* hwc_wayland_thread(void* data) {
 
     return NULL;
 }
+*/
 
 static void* hwc_extension_thread(void* data) {
     struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
@@ -1430,7 +1468,7 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     pdev->vsync_callback_enabled = true;
 
     // Initialize width and height with user-provided overrides if any
-    choose_width_height(pdev->display, 0, 0);
+    choose_width_height(pdev->display, 1920, 1080);
 
     //create Openfde window to match desktop file openfde.desktop
     auto first_window = create_window(pdev->display, pdev->use_subsurface, "Openfde", "0", {0, 0, 0, 255});
@@ -1445,14 +1483,14 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     if (pdev->display->refresh > 1000 && pdev->display->refresh < 1000000)
         pdev->vsync_period_ns = 1000 * 1000 * 1000 / (pdev->display->refresh / 1000);
 
-    if (true/*!property_get_bool("persist.waydroid.cursor_on_subsurface", false)*/) {
-        pdev->display->cursor_surface =
-            wl_compositor_create_surface(pdev->display->compositor);
-        if (pdev->display->viewporter) {
-            pdev->display->cursor_viewport =
-                wp_viewporter_get_viewport(pdev->display->viewporter, pdev->display->cursor_surface);
-        }
-    }
+    // if (true/*!property_get_bool("persist.waydroid.cursor_on_subsurface", false)*/) {
+    //     pdev->display->cursor_surface =
+    //         wl_compositor_create_surface(pdev->display->compositor);
+    //     if (pdev->display->viewporter) {
+    //         pdev->display->cursor_viewport =
+    //             wp_viewporter_get_viewport(pdev->display->viewporter, pdev->display->cursor_surface);
+    //     }
+    // }
 
     struct timespec rt;
     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
@@ -1469,10 +1507,10 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
         }
     }
 
-    ret = pthread_create (&pdev->wayland_thread, NULL, hwc_wayland_thread, pdev);
-    if (ret) {
-        ALOGE("waydroid_hw_composer could not start wayland_thread\n");
-    }
+    // ret = pthread_create (&pdev->wayland_thread, NULL, hwc_wayland_thread, pdev);
+    // if (ret) {
+    //     ALOGE("waydroid_hw_composer could not start wayland_thread\n");
+    // }
 
     ret = pthread_create (&pdev->extension_thread, NULL, hwc_extension_thread, pdev);
     if (ret) {

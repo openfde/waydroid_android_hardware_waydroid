@@ -81,10 +81,7 @@ using ::android::hardware::hidl_string;
 const int AXIS_TOUCH_SLOT_ID = 8;
 const int AXIS_TOUCH_TRACKING_ID = AXIS_TOUCH_SLOT_ID;
 
-
 struct buffer;
-static void handle_pinch_update(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t time, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t scale, wl_fixed_t rotation);
-static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t serial, uint32_t time, int cancelled);
 
 void
 destroy_buffer(struct display * display ,struct buffer* buf) {
@@ -92,10 +89,37 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         xcb_free_pixmap(display->xcbconnection, buf->xcbpixmap);
         buf->xcbpixmap = 0;
     }
-    wl_buffer_destroy(buf->buffer);
-    if (buf->isShm)
-        munmap(buf->shm_data, buf->size);
+    // wl_buffer_destroy(buf->buffer);
+    // if (buf->isShm)
+    //     munmap(buf->shm_data, buf->size);
     delete buf;
+}
+
+static int
+str_starts_with(const char *a, const char *b)
+{
+    return strncmp(a, b, strlen(b));
+}
+
+
+int
+get_gralloc_type(const char *gralloc)
+{
+    if (strcmp(gralloc, "default") == 0) {
+        return GRALLOC_DEFAULT;
+    } else if (strcmp(gralloc, "gbm") == 0) {
+        return GRALLOC_GBM;
+    } else if (strcmp(gralloc, "ranchu") == 0) {
+    return GRALLOC_RANCHU;
+    } else if (str_starts_with(gralloc, "minigbm_") == 0) {
+        return GRALLOC_CROS;
+    } else if (strcmp(gralloc, "ft2004") == 0) {
+        return GRALLOC_X100;
+    } else if (strcmp(gralloc, "LEOPARD") == 0) {
+        return GRALLOC_LEOPARD;
+    } else {
+        return GRALLOC_ANDROID;
+    }
 }
 
 static void
@@ -306,7 +330,7 @@ create_shm_wl_buffer(struct display *display, struct buffer *buffer,
 }
 
 // Call me from egl_worker_thread only!
-void snapshot_inactive_app_window(struct display *display, struct window *window) {
+/*void snapshot_inactive_app_window(struct display *display, struct window *window) {
     if (!window->surface || !window->last_layer_buffer
         || window->last_layer_buffer->isShm || window->snapshot_buffer) {
         // Need a surface to draw and a non-SHM buffer to make snapshot from
@@ -354,6 +378,7 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     xdg_surface_handle_configure,
 };
 
+*/
 
 static void
 finished_computing_scale(struct display *d)
@@ -388,7 +413,7 @@ void choose_width_height(struct display* display, int32_t hint_width, int32_t hi
     display->height = height;
 }
 
-static void
+/*static void
 xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
                               int32_t width, int32_t height,
                               struct wl_array *)
@@ -397,8 +422,9 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
     struct display *display = window->display;
 
     if (width == 0 || height == 0) {
+    */
 		/* Compositor is deferring to us */
-		return;
+/*		return;
 	}
 
     if (!display->width || !display->height) {
@@ -453,8 +479,9 @@ shell_surface_configure(void *data, struct wl_shell_surface *, uint32_t, int32_t
     struct display *display = window->display;
 
     if (width == 0 || height == 0) {
+    */
 		/* Compositor is deferring to us */
-		return;
+/*		return;
 	}
 
     if (!display->width || !display->height) {
@@ -472,6 +499,7 @@ struct wl_shell_surface_listener shell_surface_listener = {
 	&shell_surface_configure,
 	&shell_surface_popup_done
 };
+*/
 
 void
 destroy_window(struct window *window, bool keep)
@@ -492,7 +520,7 @@ destroy_window(struct window *window, bool keep)
     }
     xcb_flush(window->display->xcbconnection);
 
-    if (window->isActive) {
+ /*   if (window->isActive) {
         if (window->callback)
             wl_callback_destroy(window->callback);
 
@@ -524,13 +552,14 @@ destroy_window(struct window *window, bool keep)
 
         window->display->windows.erase(window->surface);
     }
+    */
     if (keep)
         window->isActive = false;
     else
         delete window;
 }
 
-static void fractional_scale_handle_preferred_scale(void *data, struct wp_fractional_scale_v1 *,
+/*static void fractional_scale_handle_preferred_scale(void *data, struct wp_fractional_scale_v1 *,
             uint32_t scale_times_120) {
     struct display *display = (struct display *)data;
     if (!display->viewporter) {
@@ -544,198 +573,8 @@ static void fractional_scale_handle_preferred_scale(void *data, struct wp_fracti
 static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {
     .preferred_scale = fractional_scale_handle_preferred_scale
 };
+*/
 
-struct window *
-create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
-{
-    struct window *window = new struct window();
-    if (!window)
-        return NULL;
-
-    std::string appID_title;
-    window->callback = NULL;
-    window->display = display;
-    window->surface = wl_compositor_create_surface(display->compositor);
-    window->appID = appID;
-    window->taskID = taskID;
-    window->isActive = true;
-    window->bg_viewport = NULL;
-    window->bg_buffer = NULL;
-    window->bg_surface = NULL;
-    window->bg_subsurface = NULL;
-    window->xcbwindow = 0;
-
-    bool calibrating = !display->height || !display->width;
-
-    if (display->wm_base) {
-        window->xdg_surface =
-                xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
-        assert(window->xdg_surface);
-
-        xdg_surface_add_listener(window->xdg_surface,
-                                     &xdg_surface_listener, window);
-
-        window->xdg_toplevel = xdg_surface_get_toplevel(window->xdg_surface);
-        assert(window->xdg_toplevel);
-        xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window);
-        if (display->isMaximized || !display->height || !display->width) {
-            xdg_toplevel_set_fullscreen(window->xdg_toplevel,NULL);
-            xdg_toplevel_set_maximized(window->xdg_toplevel);
-	}
-        const hidl_string appID_hidl(appID);
-        hidl_string appName_hidl(appID);
-	//rename the appid to Openfde to match the desktop file name openfde.desktop 
-        if (appID != "Openfde" && display->task)
-            display->task->getAppName(appID_hidl, [&](const hidl_string &value)
-                                      {
-				       appID_title = appID;
-				      xdg_toplevel_set_title(window->xdg_toplevel, value.c_str()); });
-        else{
-            xdg_toplevel_set_title(window->xdg_toplevel, appID.c_str());
-	     appID_title = appID;
-	}
-
-        if (appID != "Openfde")
-            appID = "openfde." + appID;
-        xdg_toplevel_set_app_id(window->xdg_toplevel, appID.c_str());
-    } else if (display->shell) {
-        window->shell_surface =
-            wl_shell_get_shell_surface(display->shell, window->surface);
-        assert(window->shell_surface);
-
-        wl_shell_surface_add_listener(window->shell_surface, &shell_surface_listener, window);
-        wl_shell_surface_set_toplevel(window->shell_surface);
-        if (display->isMaximized || !display->height || !display->width)
-            wl_shell_surface_set_maximized(window->shell_surface, display->output);
-        const hidl_string appID_hidl(appID);
-        hidl_string appName_hidl(appID);
-        if (appID != "Openfde" && display->task)
-            display->task->getAppName(appID_hidl, [&](const hidl_string &value)
-                                      { wl_shell_surface_set_title(window->shell_surface, value.c_str()); });
-        else
-            wl_shell_surface_set_title(window->shell_surface, appID.c_str());
-    } else {
-        assert(0);
-    }
-
-    if (calibrating && display->fractional_scale_manager) {
-        // We only support one global scale
-        wp_fractional_scale_v1* fs = wp_fractional_scale_manager_v1_get_fractional_scale(
-                display->fractional_scale_manager, window->surface);
-        wp_fractional_scale_v1_add_listener(fs, &fractional_scale_listener, display);
-        wl_display_roundtrip(display->display);
-        wp_fractional_scale_v1_destroy(fs);
-    }
-    finished_computing_scale(display);
-
-    wl_surface_commit(window->surface);
-
-    /* Here we retrieve objects if executed without immed, or error */
-    wl_display_roundtrip(display->display);
-    wl_surface_commit(window->surface);
-
-    if (calibrating) {
-        // If we did not receive a window size from the compositor we have to fall back to using the whole output size
-        // At the time of writing this happens on wlroots compositors
-        if (!display->height)
-            display->height = display->full_height / display->scale;
-        if (!display->width)
-            display->width = display->full_width / display->scale;
-    }
-
-
-     window->xcbwindow = xcb_generate_id(display->xcbconnection);
-
-    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-    uint32_t value_list[] = {display->xcbscreen->white_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS};
-
-    xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
-                            XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
-    xcb_change_property(
-        display->xcbconnection,
-        XCB_PROP_MODE_REPLACE,
-        window->xcbwindow,
-        XCB_ATOM_WM_NAME,
-        XCB_ATOM_STRING,
-        8,
-        strlen(appID_title.c_str()),
-        appID_title.c_str()
-    );
-    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
-    window->xcbgc = xcb_generate_id(display->xcbconnection);
-    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
-    remove_title(display->xcbconnection, window->xcbwindow);
-
-    xcb_map_window(display->xcbconnection, window->xcbwindow);
-
-
-
-    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
-    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
-    if (!dri3_reply) {
-        ALOGE("Cannot open DRI3 connection");
-    }
-    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
-    free(dri3_reply);
-    if (window->dri3_fd < 0) {
-        ALOGE("Cannot get DRI3 file descriptor");
-    }
-
-    // No subsurface background for us!
-    if (!use_subsurfaces && !display->subcompositor)
-        return window;
-
-    int fd = syscall(SYS_memfd_create, "buffer", 0);
-    ftruncate(fd, 4);
-    void *shm_data = mmap(NULL, 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (shm_data == MAP_FAILED) {
-        ALOGE("mmap failed");
-        close(fd);
-        exit(1);
-    }
-    uint32_t *buf = (uint32_t*)shm_data;
-    *buf = color.a << 24 | color.r << 16 | color.g << 8 | color.b;
-
-    struct wl_shm_pool *pool = wl_shm_create_pool(display->shm, fd, 4);
-    window->bg_buffer = wl_shm_pool_create_buffer(pool, 0, 1, 1, 4, WL_SHM_FORMAT_ARGB8888);
-    wl_shm_pool_destroy(pool);
-    close(fd);
-
-    struct wl_surface *surface = window->surface;
-    if (!use_subsurfaces) {
-        surface = wl_compositor_create_surface(display->compositor);
-        struct wl_subsurface *subsurface = wl_subcompositor_get_subsurface(display->subcompositor, surface, window->surface);
-        wl_subsurface_place_below(subsurface, window->surface);
-        window->bg_surface = surface;
-        window->bg_subsurface = subsurface;
-    }
-
-    wl_surface_attach(surface, window->bg_buffer, 0, 0);
-    wl_surface_damage_buffer(surface, 0, 0, 1, 1);
-
-    if (display->viewporter) {
-        window->bg_viewport = wp_viewporter_get_viewport(display->viewporter, surface);
-        wp_viewport_set_source(window->bg_viewport, wl_fixed_from_int(0), wl_fixed_from_int(0), wl_fixed_from_int(1), wl_fixed_from_int(1));
-        wp_viewport_set_destination(window->bg_viewport, display->width, display->height);
-    }
-
-    if (display->wm_base)
-        xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, display->width, display->height);
-
-    struct wl_region *region = wl_compositor_create_region(display->compositor);
-    if (color.a == 0) {
-        wl_surface_set_input_region(surface, region);
-    }
-    if (color.a == 255) {
-        wl_region_add(region, 0, 0, display->width, display->height);
-        wl_surface_set_opaque_region(surface, region);
-    }
-    wl_region_destroy(region);
-
-    wl_surface_commit(surface);
-
-    return window;
-}
 
 static int
 ensure_pipe(struct display* display, int input_type)
@@ -757,132 +596,6 @@ ensure_pipe(struct display* display, int input_type)
     event[n].code = code_;                         \
     event[n].value = value_;                       \
     n++;
-
-static void
-send_key_event(display *data, uint32_t key, wl_keyboard_key_state state)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[1];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (key >= display->keysDown.size()) {
-        ALOGE("Invalid key: %u", key);
-        return;
-    }
-
-    if (ensure_pipe(display, INPUT_KEYBOARD))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-    ADD_EVENT(EV_KEY, key, state);
-
-    res = write(display->input_fd[INPUT_KEYBOARD], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-    display->keysDown[(uint8_t)key] = state;
-}
-
-static void
-keyboard_handle_keymap(void *, struct wl_keyboard *,
-               uint32_t format, int fd, uint32_t size)
-{
-    if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
-        char* keymap_shm = (char*)mmap(NULL, size - 1, PROT_READ, MAP_PRIVATE, fd, 0);
-        auto xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_DEFAULT_INCLUDES);
-        auto xkb_keymap = xkb_keymap_new_from_buffer(xkb_ctx, keymap_shm, size - 1,
-                            XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
-        const char* namep = xkb_keymap_layout_get_name(xkb_keymap, 0);
-        if (namep) {
-            // Try to convert XKB name to an android identifier.
-            // This is not very good, for example "English (UK)" becomes "english"
-            // but android understand only "english_uk" or "english_us"
-            std::string layout_name(namep);
-            std::string layout_id = layout_name.substr(0, layout_name.find(' '));
-            std::transform(layout_id.begin(), layout_id.end(), layout_id.begin(), ::tolower);
-            property_set("waydroid.keyboard_layout", layout_id.c_str());
-        }
-
-        xkb_keymap_unref(xkb_keymap);
-        xkb_context_unref(xkb_ctx);
-        munmap(keymap_shm, size - 1);
-    }
-    close(fd);
-}
-
-static void
-keyboard_handle_enter(void *data, struct wl_keyboard *,
-                      uint32_t, struct wl_surface *surface,
-                      struct wl_array *)
-{
-    struct display *display = (struct display *)data;
-    ALOGD("keyboard_handle_enter");
-
-    std::scoped_lock lock(display->windowsMutex);
-    if (display->windows.find(surface) == display->windows.end())
-        return;
-
-    struct window *window = display->windows[surface];
-
-    if (window->display->task != nullptr) {
-        if (window->taskID != "none" && window->taskID != "0") {
-            window->display->task->setFocusedTask(stoi(window->taskID));
-        }
-    }
-}
-
-static void
-keyboard_handle_leave(void *data, struct wl_keyboard *,
-                      uint32_t, struct wl_surface *)
-{
-    struct display *display = (struct display *)data;
-    for (size_t i = 0; i < display->keysDown.size(); i++) {
-        if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
-            send_key_event(display, i, WL_KEYBOARD_KEY_STATE_RELEASED);
-        }
-    }
-    ALOGD("keyboard_handle_leave");
-    display->ctrl_key_pressed = 0;
-}
-
-
-static void
-keyboard_handle_key(void *data, struct wl_keyboard *,
-                    uint32_t, uint32_t, uint32_t key,
-                    uint32_t state)
-{
-    if (key == KEY_POWER)
-        return;
-    struct display* display = (struct display*)data;
-    if (key == KEY_LEFTCTRL || key == KEY_RIGHTCTRL){
-        display->ctrl_key_pressed = state;
-    }
-    send_key_event((struct display*)data, key, (enum wl_keyboard_key_state)state);
-}
-
-static void
-keyboard_handle_modifiers(void *, struct wl_keyboard *, uint32_t, uint32_t,
-                          uint32_t, uint32_t, uint32_t)
-{
-}
-
-static void
-keyboard_handle_repeat_info(void *, struct wl_keyboard *,
-                            int32_t, int32_t)
-{
-}
-
-static const struct wl_keyboard_listener keyboard_listener = {
-    keyboard_handle_keymap,
-    keyboard_handle_enter,
-    keyboard_handle_leave,
-    keyboard_handle_key,
-    keyboard_handle_modifiers,
-    keyboard_handle_repeat_info,
-};
 
 static void pointer_handle_button_to_touch_down(struct display *display) {
     struct input_event event[6];
@@ -933,7 +646,7 @@ static void pointer_handle_button_to_touch_up(struct display *display) {
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
 }
 
-static void
+/*static void
 pointer_handle_enter(void *data, struct wl_pointer *pointer,
                      uint32_t serial, struct wl_surface *surface,
                      wl_fixed_t, wl_fixed_t)
@@ -962,6 +675,7 @@ pointer_handle_leave(void *data, struct wl_pointer *pointer,
         wl_pointer_set_cursor(pointer, serial, NULL, 0, 0);
     }
 }
+*/
 
 static void
 pointer_cancel_axis_to_two_finger_touch(struct display *display){
@@ -1051,10 +765,14 @@ pointer_cancel_axis_to_touch(struct display *display, bool fromAxisStopEvent, bo
 }
 
 
+/*
 static void
 pointer_handle_motion(void *data, struct wl_pointer *,
                       uint32_t, wl_fixed_t sx, wl_fixed_t sy)
 {
+    if(property_get_bool("fde.x11_input", false)){
+        return;
+    }
     struct display* display = (struct display*)data;
     if(display->axis_simulation_two_finger_started){
         pointer_cancel_axis_to_two_finger_touch(display);
@@ -1107,74 +825,61 @@ pointer_handle_motion(void *data, struct wl_pointer *,
     }
 }
 
-static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {
-	.relative_motion = handle_relative_motion,
-};
+*/
 
-void
-handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
-        uint32_t, uint32_t, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t, wl_fixed_t)
-{
-    struct display *display = (struct display *)data;
-    if(display->axis_simulation_two_finger_started){
-        pointer_cancel_axis_to_two_finger_touch(display);
-    }
 
-    static double acc_x = 0;
-    static double acc_y = 0;
+typedef void (*KeyPressCallback)(void *data, xcb_key_press_event_t *event);
+typedef void (*KeyReleaseCallback)(void *data, xcb_key_release_event_t *event);
+typedef void (*ButtonPressCallback)(void *data, xcb_button_press_event_t *event);
+typedef void (*ButtonReleaseCallback)(void *data, xcb_button_release_event_t *event);
+typedef void (*MotionNotifyCallback)(void *data, xcb_motion_notify_event_t *event);
 
-    if (ensure_pipe(display, INPUT_POINTER))
-        return;
+typedef struct {
+    KeyPressCallback key_press_cb;
+    KeyReleaseCallback key_release_cb;
+    ButtonPressCallback button_press_cb;
+    ButtonReleaseCallback button_release_cb;
+    MotionNotifyCallback motion_notify_cb;
+} EventDispatcher;
 
-    acc_x += wl_fixed_to_double(dx);
-    acc_y += wl_fixed_to_double(dy);
+static EventDispatcher dispatcher = {0,0,0,0,0};
+static volatile bool running = true;
 
-    if (abs(acc_x) < 1 && abs(acc_y) < 1)
-        return;
+void register_key_press_callback(KeyPressCallback cb) { dispatcher.key_press_cb = cb; }
+void register_key_release_callback(KeyReleaseCallback cb) { dispatcher.key_release_cb = cb; }
+void register_button_press_callback(ButtonPressCallback cb) { dispatcher.button_press_cb = cb; }
+void register_button_release_callback(ButtonReleaseCallback cb) { dispatcher.button_release_cb = cb; }
+void register_motion_notify_callback(MotionNotifyCallback cb) { dispatcher.motion_notify_cb = cb; }
 
-    if(!display->isTouchDown && pointer_cancel_axis_to_touch(display, false, false)){
-        struct input_event event[3];
-        struct timespec rt;
-        unsigned int res, n = 0;
-        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-            ALOGE("%s:%d error in touch clock_gettime: %s",
-                  __FILE__, __LINE__, strerror(errno));
-        }
-        ADD_EVENT(EV_REL, REL_X, (int)acc_x);
-        ADD_EVENT(EV_REL, REL_Y, (int)acc_y);
-        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+void on_key_press(void *data, xcb_key_press_event_t *event) {
+    struct display* display = (struct display*)data;
 
-        acc_x -= (int)acc_x;
-        acc_y -= (int)acc_y;
-
-        if(property_get_bool("fde.inject_as_touch", false)){
-            return;
-        }
-        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
-        if (res < sizeof(event))
-            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-    }
+    ALOGE("x11 keyboard press: keycode=%u\n", event->detail);
+    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
 }
 
-static void
-pointer_handle_button(void *data, struct wl_pointer *,
-                      uint32_t, uint32_t, uint32_t button,
-                      uint32_t state)
-{
+void on_key_release(void *data, xcb_key_release_event_t *event) {
     struct display* display = (struct display*)data;
+    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+
+    ALOGE("x11 keyboard release: keycode=%u\n", event->detail);
+}
+
+void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
+    struct display* display = (struct display*)data;
+    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+
+    ALOGE("x11 mouse press: botton=%u, position=(%d, %d)\n",
+           xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     pointer_cancel_axis_to_touch(display, false, true);
     if(display->axis_simulation_two_finger_started){
         pointer_cancel_axis_to_two_finger_touch(display);
     }
 
     // Left button convert to touch event, right button reserved mouse event
-    if(((button == BTN_LEFT && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown) {
-        // convert pointer event to touch event
-        if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-            pointer_handle_button_to_touch_down(display);
-        } else {
-            pointer_handle_button_to_touch_up(display);
-        }
+    if(((xcb_button_event->detail == 1 && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown) {
+	      // convert pointer event to touch event
+        pointer_handle_button_to_touch_down(display);
     }else{
         struct input_event event[2];
         struct timespec rt;
@@ -1190,1270 +895,403 @@ pointer_handle_button(void *data, struct wl_pointer *,
             ALOGE("%s:%d error in touch clock_gettime: %s",
                    __FILE__, __LINE__, strerror(errno));
         }
-        if(button == BTN_LEFT){
-            if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-                display->isMouseLeftDown = true;
-            } else {
-                display->isMouseLeftDown = false;
-            }
+        if(xcb_button_event->detail == 1){
+            display->isMouseLeftDown = true;
         }
-        ADD_EVENT(EV_KEY, button, state);
-        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
+
+        uint32_t button = 0;
+        switch(xcb_button_event->detail){
+            case XCB_BUTTON_INDEX_1:
+                button = BTN_LEFT;
+                break;
+            case XCB_BUTTON_INDEX_3:
+                button = BTN_RIGHT;
+                break;
+        }
+        if(button != 0){
+            ADD_EVENT(EV_KEY, button, 1);
+            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+            res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
+        }
     }
 }
 
-static void
-pointer_axis_to_touch(struct display *display, int move, bool verticalScroll)
-{
-    struct input_event event[6];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    int64_t nanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
-    if(verticalScroll){
-        display->axisY += move;
-    }else{
-        display->axisX += move;
-    }
-
-    // if ((nanoSeconds - display->lastAxisEventNanoSeconds) < 20 * 1000 * 1000) {
-    //     return;
-    // }
-
-    if (display->lastAxisEventNanoSeconds == 0) {
-        display->axisY = display->ptrPrvY;
-        display->axisX = display->ptrPrvX;
-        ADD_EVENT(EV_ABS, ABS_MT_SLOT, AXIS_TOUCH_SLOT_ID);
-        ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, AXIS_TOUCH_TRACKING_ID);
-        if(verticalScroll){
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->ptrPrvX);
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axisY);
-        }else{
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axisX);
-            ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->ptrPrvY);
-        }
-        ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-        res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-        if (res < sizeof(event)) {
-            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-            return;
-        }
-
-        n = 0;
-        display->axisY += move;
-    }
-
-    display->lastAxisEventNanoSeconds = nanoSeconds;
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, AXIS_TOUCH_SLOT_ID);
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, AXIS_TOUCH_TRACKING_ID);
-    if(verticalScroll){
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->ptrPrvX);
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axisY);
-    }else{
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axisX);
-        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->ptrPrvY);
-    }
-    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-pointer_handle_axis(void *data, struct wl_pointer *,
-                    uint32_t, uint32_t axis, wl_fixed_t value)
-{
+void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event) {
     struct display* display = (struct display*)data;
-    int touchMove = display->reverseScroll ? wl_fixed_to_int(value) : -wl_fixed_to_int(value);
-    if (display->wheelEvtIsDiscrete) {
-        touchMove *= 6;
+    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+
+    ALOGE("x11 mouse release: button=%u, position=(%d, %d)\n",
+           xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
+    pointer_cancel_axis_to_touch(display, false, true);
+    if(display->axis_simulation_two_finger_started){
+        pointer_cancel_axis_to_two_finger_touch(display);
     }
 
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int move, res, n = 0;
-    double fVal = wl_fixed_to_double(value) / 10.0f;
-    double step = 1.0f;
-
-    if (ensure_pipe(display, INPUT_POINTER))
-        return;
-
-    if (!display->pointer_surface)
-        return;
-
-    if (!display->reverseScroll) {
-        fVal = -fVal;
-    }
-
-    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-        display->wheelAccumulatorY += fVal;
-        if (std::abs(display->wheelAccumulatorY) < step)
-            return;
-        move = (int)(display->wheelAccumulatorY / step);
-        display->wheelAccumulatorY = display->wheelEvtIsDiscrete ? 0 :
-                                     std::fmod(display->wheelAccumulatorY, step);
-    } else {
-        display->wheelAccumulatorX += fVal;
-        if (std::abs(display->wheelAccumulatorX) < step)
-            return;
-        move = (int)(display->wheelAccumulatorX / step);
-        display->wheelAccumulatorX = display->wheelEvtIsDiscrete ? 0 :
-                                     std::fmod(display->wheelAccumulatorX, step);
-    }
-
-    if(property_get_bool("fde.click_as_touch", false)){
-        if(display->ctrl_key_pressed){
-            if(touchMove > 0){
-                display->gesture_scale += 15;
-            }else{
-                display->gesture_scale -= 15;
-                if(display->gesture_scale < 15){
-                    display->gesture_scale = 5;
-                }
-            }
-            if(display->lastAxisEventNanoSeconds != 0){
-                pointer_cancel_axis_to_touch(display, true, true);
-            }
-            handle_pinch_update(data, NULL,0,0,0,display->gesture_scale,0);
-            display->axis_simulation_two_finger_started = true;
-        }else{
-            if(display->axis_simulation_two_finger_started){
-                pointer_cancel_axis_to_two_finger_touch(display);
-            }
-            pointer_axis_to_touch(display, touchMove, axis == WL_POINTER_AXIS_VERTICAL_SCROLL);
-        }
+    // Left button convert to touch event, right button reserved mouse event
+    if(((xcb_button_event->detail == 1 && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown) {
+        // convert pointer event to touch event
+        pointer_handle_button_to_touch_up(display);
     }else{
+        struct input_event event[2];
+        struct timespec rt;
+        unsigned int res, n = 0;
+
+        if (ensure_pipe(display, INPUT_POINTER))
+            return;
+
+        if (!display->pointer_surface)
+            return;
+
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
-                  __FILE__, __LINE__, strerror(errno));
+                   __FILE__, __LINE__, strerror(errno));
         }
-        ADD_EVENT(EV_REL, (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
-              ? REL_WHEEL : REL_HWHEEL, move);
+        if(xcb_button_event->detail == 1){
+            display->isMouseLeftDown = false;
+        }
+
+        uint32_t button = 0;
+        switch(xcb_button_event->detail){
+            case XCB_BUTTON_INDEX_1:
+                button = BTN_LEFT;
+                break;
+            case XCB_BUTTON_INDEX_3:
+                button = BTN_RIGHT;
+                break;
+        }
+        if(button != 0){
+            ADD_EVENT(EV_KEY, button, 0);
+            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+            res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
+        }
+    }
+}
+
+void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
+    struct display* display = (struct display*)data;
+    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+    ALOGE("x11 mouse move: position=(%d, %d)\n",
+           event->event_x, event->event_y);
+    ALOGE("鼠标移动: 窗口坐标 (%d, %d) -> 屏幕坐标 (%d, %d)\n", event->event_x, event->event_y, event->root_x, event->root_y);
+    if(display->axis_simulation_two_finger_started){
+        pointer_cancel_axis_to_two_finger_touch(display);
+    }
+    int x, y;
+
+    if (ensure_pipe(display, INPUT_POINTER)){
+        ALOGE("on_motion_notify return 1------>>>>>>");
+        return;
+    }
+
+    //if (!display->pointer_surface){
+    //    ALOGE("on_motion_notify return 2------>>>>>>");
+    //    return;
+    //}
+
+    x = event->root_x;
+    y = event->root_y;
+    //x = event->event_x;
+    //y = event->event_y;
+
+    if (display->scale != 1) {
+        x = int(x * display->scale);
+        y = int(y * display->scale);
+    }
+    //x += display->layers[display->pointer_surface].x;
+    //y += display->layers[display->pointer_surface].y;
+
+    if (display->isTouchDown) {
+        display->ptrPrvX = x;
+        display->ptrPrvY = y;
+        pointer_handle_button_to_touch_down(display);
+    } else if (pointer_cancel_axis_to_touch(display, false, false)) {
+        struct input_event event[5];
+        struct timespec rt;
+        unsigned int res, n = 0;
+
+        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+            ALOGE("%s:%d error in touch clock_gettime: %s",
+                __FILE__, __LINE__, strerror(errno));
+        }
+
+        ADD_EVENT(EV_ABS, ABS_X, x);
+        ADD_EVENT(EV_ABS, ABS_Y, y);
+        ADD_EVENT(EV_REL, REL_X, x - display->ptrPrvX);
+        ADD_EVENT(EV_REL, REL_Y, y - display->ptrPrvY);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+        display->ptrPrvX = x;
+        display->ptrPrvY = y;
+        bool near_bord = x <= 10 || y <= 10 || x >= display->width - 10 || y >= display->height - 10;
+        if(property_get_bool("fde.inject_as_touch", false) && !near_bord){
+            return;
+        }
 
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+
     }
 }
 
-static void
-pointer_handle_axis_source(void *data, struct wl_pointer *, uint32_t source)
-{
-    struct display* display = (struct display*)data;
-    display->wheelEvtIsDiscrete = (source == WL_POINTER_AXIS_SOURCE_WHEEL);
-}
 
-static void
-pointer_handle_axis_stop(void *data, struct wl_pointer *, uint32_t, uint32_t)
-{
-    struct display* display = (struct display*)data;
-    if(display->axis_simulation_two_finger_started){
-        pointer_cancel_axis_to_two_finger_touch(display);
+void *event_loop_thread(void *arg) {
+    struct display* display = (struct display*)arg;
+    xcb_connection_t *connection = (xcb_connection_t *)display->xcbconnection;
+    int xcb_fd = xcb_get_file_descriptor(connection);
+    if (xcb_fd < 0) {
+        ALOGE("Unable to obtain XCB file descriptor\n");
+        return NULL;
     }
-    pointer_cancel_axis_to_touch(display, true, true);
-}
 
-static void
-pointer_handle_axis_discrete(void *data, struct wl_pointer *, uint32_t, int32_t)
-{
-    struct display* display = (struct display*)data;
-    display->wheelEvtIsDiscrete = true;
-}
+    ALOGE("enter eventloopthread");
+    fd_set read_fds;
+    while (running) {
+        FD_ZERO(&read_fds);
+        FD_SET(xcb_fd, &read_fds);
 
-static void
-pointer_handle_frame(void *, struct wl_pointer *)
-{
-}
+        struct timeval timeout = { .tv_sec = 0, .tv_usec = 100000 }; // 100ms
 
-static const struct wl_pointer_listener pointer_listener = {
-    pointer_handle_enter,
-    pointer_handle_leave,
-    pointer_handle_motion,
-    pointer_handle_button,
-    pointer_handle_axis,
-    pointer_handle_frame,
-    pointer_handle_axis_source,
-    pointer_handle_axis_stop,
-    pointer_handle_axis_discrete,
-};
+        int ret = select(xcb_fd + 1, &read_fds, NULL, NULL, &timeout);
+        if (ret < 0) {
+            ALOGE("select error");
+            break;
+        }
 
-static int
-get_touch_id(struct display *display, int id)
-{
-    int i = 0;
-    for (i = 0; i < MAX_TOUCHPOINTS; i++) {
-        if (display->touch_id[i] == id)
-            return i;
-    }
-    for (i = 0; i < MAX_TOUCHPOINTS; i++) {
-        if (display->touch_id[i] == -1) {
-            display->touch_id[i] = id;
-            return i;
+        if (FD_ISSET(xcb_fd, &read_fds)) {
+            while (xcb_generic_event_t *event = xcb_poll_for_event(connection)) {
+                switch (event->response_type & ~0x80) {
+                    case XCB_KEY_PRESS:
+                        if (dispatcher.key_press_cb) {
+                            dispatcher.key_press_cb(arg, (xcb_key_press_event_t *)event);
+                        }
+                        break;
+                    case XCB_KEY_RELEASE:
+                        if (dispatcher.key_release_cb) {
+                            dispatcher.key_release_cb(arg, (xcb_key_release_event_t *)event);
+                        }
+                        break;
+                    case XCB_BUTTON_PRESS:
+                        if (dispatcher.button_press_cb) {
+                            dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
+                        }
+                        break;
+                    case XCB_BUTTON_RELEASE:
+                        if (dispatcher.button_release_cb) {
+                            dispatcher.button_release_cb(arg, (xcb_button_release_event_t *)event);
+                        }
+                        break;
+                    case XCB_MOTION_NOTIFY:
+                        if (dispatcher.motion_notify_cb) {
+                            dispatcher.motion_notify_cb(arg, (xcb_motion_notify_event_t *)event);
+                        }
+                        break;
+                }
+                free(event);
+            }
         }
     }
-    return -1;
+
+    return NULL;
 }
 
-static int
-flush_touch_id(struct display *display, int id)
+
+struct window *
+create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
 {
-    for (int i = 0; i < MAX_TOUCHPOINTS; i++) {
-        if (display->touch_id[i] == id) {
-            display->touch_id[i] = -1;
-            return i;
-        }
-    }
-    return -1;
-}
+	ALOGE("%d %d", use_subsurfaces, color.a);
+    struct window *window = new struct window();
+    if (!window)
+        return NULL;
 
-static void
-touch_handle_down(void *data, struct wl_touch *,
-          uint32_t, uint32_t, struct wl_surface *surface,
-          int32_t id, wl_fixed_t x_w, wl_fixed_t y_w)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[6];
-    struct timespec rt;
-    int x, y;
-    unsigned int res, n = 0;
+    std::string appID_title;
+    window->callback = NULL;
+    window->display = display;
+    // window->surface = wl_compositor_create_surface(display->compositor);
+    window->appID = appID;
+    window->taskID = taskID;
+    window->isActive = true;
+    window->bg_viewport = NULL;
+    window->bg_buffer = NULL;
+    window->bg_surface = NULL;
+    window->bg_subsurface = NULL;
+    window->xcbwindow = 0;
 
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
+    bool calibrating = !display->height || !display->width;
 
-    display->touch_surfaces[id] = surface;
+    // if (display->wm_base) {
+    //     window->xdg_surface =
+    //             xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
+    //     assert(window->xdg_surface);
 
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-    x = wl_fixed_to_int(x_w);
-    y = wl_fixed_to_int(y_w);
-    if (display->scale != 1) {
-        x = int(x * display->scale);
-        y = int(y * display->scale);
-    }
-    x += display->layers[surface].x;
-    y += display->layers[surface].y;
+    //     xdg_surface_add_listener(window->xdg_surface,
+    //                                  &xdg_surface_listener, window);
 
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, get_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, get_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
-    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    //     window->xdg_toplevel = xdg_surface_get_toplevel(window->xdg_surface);
+    //     assert(window->xdg_toplevel);
+    //     xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window);
+    //     if (display->isMaximized || !display->height || !display->width) {
+    //         xdg_toplevel_set_fullscreen(window->xdg_toplevel,NULL);
+    //         xdg_toplevel_set_maximized(window->xdg_toplevel);
+	//      }   
+        const hidl_string appID_hidl(appID);
+        hidl_string appName_hidl(appID);
+	//rename the appid to Openfde to match the desktop file name openfde.desktop 
+        if (appID != "Openfde" && display->task)
+            display->task->getAppName(appID_hidl, [&](const hidl_string &value)
+                                      {
+				       appID_title = value;
+				    //   xdg_toplevel_set_title(window->xdg_toplevel, value.c_str()); 
+                    });
+        else{
+            // xdg_toplevel_set_title(window->xdg_toplevel, appID.c_str());
+	     appID_title = appID;
+	}
 
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
+        if (appID != "Openfde")
+            appID = "openfde." + appID;
+        // xdg_toplevel_set_app_id(window->xdg_toplevel, appID.c_str());
+    // } else if (display->shell) {
+    //     window->shell_surface =
+    //         wl_shell_get_shell_surface(display->shell, window->surface);
+    //     assert(window->shell_surface);
 
-static void
-touch_handle_up(void *data, struct wl_touch *,
-        uint32_t, uint32_t, int32_t id)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[3];
-    struct timespec rt;
-    unsigned int res, n = 0;
+    //     wl_shell_surface_add_listener(window->shell_surface, &shell_surface_listener, window);
+    //     wl_shell_surface_set_toplevel(window->shell_surface);
+    //     if (display->isMaximized || !display->height || !display->width)
+    //         wl_shell_surface_set_maximized(window->shell_surface, display->output);
+    //     const hidl_string appID_hidl(appID);
+    //     hidl_string appName_hidl(appID);
+    //     if (appID != "Openfde" && display->task)
+    //         display->task->getAppName(appID_hidl, [&](const hidl_string &value)
+    //                                   { wl_shell_surface_set_title(window->shell_surface, value.c_str()); });
+    //     else
+    //         wl_shell_surface_set_title(window->shell_surface, appID.c_str());
+    // } else {
+    //     assert(0);
+    // }
 
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
+    // if (calibrating && display->fractional_scale_manager) {
+    //     // We only support one global scale
+    //     wp_fractional_scale_v1* fs = wp_fractional_scale_manager_v1_get_fractional_scale(
+    //             display->fractional_scale_manager, window->surface);
+    //     wp_fractional_scale_v1_add_listener(fs, &fractional_scale_listener, display);
+    //     wl_display_roundtrip(display->display);
+    //     wp_fractional_scale_v1_destroy(fs);
+    // }
+    finished_computing_scale(display);
 
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-    display->touch_surfaces[id] = NULL;
+    // wl_surface_commit(window->surface);
 
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, flush_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    /* Here we retrieve objects if executed without immed, or error */
+    // wl_display_roundtrip(display->display);
+    // wl_surface_commit(window->surface);
 
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-touch_handle_motion(void *data, struct wl_touch *,
-            uint32_t, int32_t id, wl_fixed_t x_w, wl_fixed_t y_w)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[6];
-    struct timespec rt;
-    int x, y;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-    x = wl_fixed_to_int(x_w);
-    y = wl_fixed_to_int(y_w);
-    if (display->scale != 1) {
-        x = int(x * display->scale);
-        y = int(y * display->scale);
-    }
-    x += display->layers[display->touch_surfaces[id]].x;
-    y += display->layers[display->touch_surfaces[id]].y;
-
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, get_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, get_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x);
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y);
-    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-touch_handle_frame(void *, struct wl_touch *)
-{
-}
-
-static void
-touch_handle_cancel(void *data, struct wl_touch *)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[6];
-    struct timespec rt;
-    unsigned int res, n;
-    int i, id;
-
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
+    if (calibrating) {
+        // If we did not receive a window size from the compositor we have to fall back to using the whole output size
+        // At the time of writing this happens on wlroots compositors
+        if (!display->height)
+            display->height = display->full_height / display->scale;
+        if (!display->width)
+            display->width = display->full_width / display->scale;
     }
 
-    // Cancel all touch points.
-    for (i = 0; i < MAX_TOUCHPOINTS; i++) {
-        if (display->touch_id[i] != -1) {
-            id = display->touch_id[i];
-            display->touch_id[i] = -1;
-            display->touch_surfaces[id] = NULL;
 
-            n = 0;
-            // Turn finger into palm.
-            ADD_EVENT(EV_ABS, ABS_MT_SLOT, i);
-            ADD_EVENT(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM);
-            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-            // Lift off.
-            ADD_EVENT(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_FINGER);
-            ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
-            ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+     window->xcbwindow = xcb_generate_id(display->xcbconnection);
 
-            res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-            if (res < sizeof(event))
-                ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-        }
+    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION};
+
+    xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
+                            XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
+    xcb_change_property(
+        display->xcbconnection,
+        XCB_PROP_MODE_REPLACE,
+        window->xcbwindow,
+        XCB_ATOM_WM_NAME,
+        XCB_ATOM_STRING,
+        8,
+        strlen(appID_title.c_str()),
+        appID_title.c_str()
+    );
+    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
+
+
+    window->xcbgc = xcb_generate_id(display->xcbconnection);
+    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
+    remove_title(display->xcbconnection, window->xcbwindow);
+
+    xcb_map_window(display->xcbconnection, window->xcbwindow);
+
+
+
+    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
+    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
+    if (!dri3_reply) {
+        ALOGE("Cannot open DRI3 connection");
     }
-}
-
-static void
-touch_handle_shape(void *data, struct wl_touch *, int32_t id, wl_fixed_t major, wl_fixed_t minor)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[5];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, get_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, get_touch_id(display, id));
-    ADD_EVENT(EV_ABS, ABS_MT_TOUCH_MAJOR, wl_fixed_to_int(major));
-    ADD_EVENT(EV_ABS, ABS_MT_TOUCH_MINOR, wl_fixed_to_int(minor));
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-touch_handle_orientation(void *, struct wl_touch *, int32_t, wl_fixed_t)
-{
-}
-
-static const struct wl_touch_listener touch_listener = {
-    touch_handle_down,
-    touch_handle_up,
-    touch_handle_motion,
-    touch_handle_frame,
-    touch_handle_cancel,
-    touch_handle_shape,
-    touch_handle_orientation,
-};
-
-static void
-xdg_wm_base_ping(void *, struct xdg_wm_base *wm_base, uint32_t serial)
-{
-    xdg_wm_base_pong(wm_base, serial);
-}
-
-static const struct xdg_wm_base_listener xdg_wm_base_listener = {
-    xdg_wm_base_ping,
-};
-
-static void handle_swipe_begin(void *data, struct zwp_pointer_gesture_swipe_v1 *gesture, uint32_t serial, uint32_t time, struct wl_surface *surface, uint32_t fingers)
-{
-    (void) data;
-    (void) gesture;
-    (void) serial;
-    (void) time;
-    (void) surface;
-    (void) fingers;
-    ALOGI("handle_swipe_begin");
-}
-
-static void handle_swipe_update(void *data, struct zwp_pointer_gesture_swipe_v1 *gesture, uint32_t time, wl_fixed_t dx, wl_fixed_t dy)
-{
-    (void) data;
-    (void) gesture;
-    (void) time;
-    (void) dx;
-    (void) dy;
-    ALOGI("handle_swipe_update");
-}
-
-static void handle_swipe_end(void *data, struct zwp_pointer_gesture_swipe_v1 *gesture, uint32_t serial, uint32_t time, int cancelled)
-{
-    (void) data;
-    (void) gesture;
-    (void) serial;
-    (void) time;
-    (void) cancelled;
-    ALOGI("handle_swipe_end");
-}
-
-static void handle_pinch_begin(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t serial, uint32_t time, struct wl_surface *surface, uint32_t fingers)
-{
-    (void) data;
-    (void) gesture;
-    (void) serial;
-    (void) time;
-    (void) surface;
-    (void) fingers;
-    ALOGI("handle_pinch_begin");
-}
-
-static void handle_pinch_update(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t time, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t scale, wl_fixed_t rotation)
-{
-    (void) data;
-    (void) gesture;
-    (void) time;
-    (void) dx;
-    (void) dy;
-    (void) scale;
-    (void) rotation;
-    struct display* display = (struct display*)data;
-    struct input_event event[12];
-    struct timespec rt;
-    int x, y;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-    x = wl_fixed_to_int(dx) + display->ptrPrvX;
-    y = wl_fixed_to_int(dy) + display->ptrPrvY;
-
-
-    double iscale = wl_fixed_to_double(scale);
-    double irotation = 90;
-
-    int x0 = x - (240.0 * iscale * cos(irotation));
-    int y0 = y - (240.0 * iscale * sin(irotation));
-    int x1 = x + (240.0 * iscale * cos(irotation));
-    int y1 = y + (240.0 * iscale * sin(irotation));
-
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x0);
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y0);
-    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 1);
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 1);
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x1);
-    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y1);
-    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-
-}
-
-static void handle_pinch_end(void *data, struct zwp_pointer_gesture_pinch_v1 *gesture, uint32_t serial, uint32_t time, int cancelled)
-{
-    ALOGI("handle_pinch_end");
-    (void) data;
-    (void) gesture;
-    (void) serial;
-    (void) time;
-    (void) cancelled;
-    struct display* display = (struct display*)data;
-    struct input_event event[6];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TOUCH))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
+    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
+    free(dri3_reply);
+    if (window->dri3_fd < 0) {
+        ALOGE("Cannot get DRI3 file descriptor");
     }
 
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 1);
-    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+    // No subsurface background for us!
+    // if (!use_subsurfaces && !display->subcompositor)
+    //     return window;
+
+    // int fd = syscall(SYS_memfd_create, "buffer", 0);
+    // ftruncate(fd, 4);
+    // void *shm_data = mmap(NULL, 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    // if (shm_data == MAP_FAILED) {
+    //     ALOGE("mmap failed");
+    //     close(fd);
+    //     exit(1);
+    // }
+    // uint32_t *buf = (uint32_t*)shm_data;
+    // *buf = color.a << 24 | color.r << 16 | color.g << 8 | color.b;
+
+    // struct wl_shm_pool *pool = wl_shm_create_pool(display->shm, fd, 4);
+    // window->bg_buffer = wl_shm_pool_create_buffer(pool, 0, 1, 1, 4, WL_SHM_FORMAT_ARGB8888);
+    // wl_shm_pool_destroy(pool);
+    // close(fd);
+
+    // struct wl_surface *surface = window->surface;
+    // if (!use_subsurfaces) {
+    //     surface = wl_compositor_create_surface(display->compositor);
+    //     struct wl_subsurface *subsurface = wl_subcompositor_get_subsurface(display->subcompositor, surface, window->surface);
+    //     wl_subsurface_place_below(subsurface, window->surface);
+    //     window->bg_surface = surface;
+    //     window->bg_subsurface = subsurface;
+    // }
+
+    // wl_surface_attach(surface, window->bg_buffer, 0, 0);
+    // wl_surface_damage_buffer(surface, 0, 0, 1, 1);
+
+    // if (display->viewporter) {
+    //     window->bg_viewport = wp_viewporter_get_viewport(display->viewporter, surface);
+    //     wp_viewport_set_source(window->bg_viewport, wl_fixed_from_int(0), wl_fixed_from_int(0), wl_fixed_from_int(1), wl_fixed_from_int(1));
+    //     wp_viewport_set_destination(window->bg_viewport, display->width, display->height);
+    // }
+
+    // if (display->wm_base)
+    //     xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, display->width, display->height);
+
+    // struct wl_region *region = wl_compositor_create_region(display->compositor);
+    // if (color.a == 0) {
+    //     wl_surface_set_input_region(surface, region);
+    // }
+    // if (color.a == 255) {
+    //     wl_region_add(region, 0, 0, display->width, display->height);
+    //     wl_surface_set_opaque_region(surface, region);
+    // }
+    // wl_region_destroy(region);
+
+    // wl_surface_commit(surface);
+
+    return window;
 }
 
-static const struct zwp_pointer_gesture_swipe_v1_listener swipe_listener = {
-    handle_swipe_begin,
-    handle_swipe_update,
-    handle_swipe_end
-};
-
-static const struct zwp_pointer_gesture_pinch_v1_listener pinch_listener = {
-    handle_pinch_begin,
-    handle_pinch_update,
-    handle_pinch_end
-};
-
-static void wl_pointer_gesture_add_listener(struct display *display) {
-    if(!display->pointer_gestures)return;
-    display->pointer_gestures_swipe = zwp_pointer_gestures_v1_get_swipe_gesture(display->pointer_gestures, display->pointer);
-    display->pointer_gestures_pinch = zwp_pointer_gestures_v1_get_pinch_gesture(display->pointer_gestures, display->pointer);
-    zwp_pointer_gesture_swipe_v1_add_listener(display->pointer_gestures_swipe, &swipe_listener, display);
-    zwp_pointer_gesture_pinch_v1_add_listener(display->pointer_gestures_pinch, &pinch_listener, display);
-}
-
-static void
-release_pointer_gestures_device(struct display *display)
-{
-    if (display->pointer_gestures_swipe) {
-        zwp_pointer_gesture_swipe_v1_destroy(display->pointer_gestures_swipe);
-        display->pointer_gestures_swipe = NULL;
-    }
-
-    if (display->pointer_gestures_pinch) {
-        zwp_pointer_gesture_pinch_v1_destroy(display->pointer_gestures_pinch);
-        display->pointer_gestures_pinch = NULL;
-    }
-
-    if (display->pointer_gestures){
-        zwp_pointer_gestures_v1_destroy(display->pointer_gestures);
-        display->pointer_gestures = NULL;
-    }
-}
-
-
-static void
-seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t wl_caps)
-{
-    struct display *d = (struct display*)data;
-    enum wl_seat_capability caps = (enum wl_seat_capability) wl_caps;
-
-    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !d->pointer) {
-        d->pointer = wl_seat_get_pointer(seat);
-        d->input_fd[INPUT_POINTER] = -1;
-        d->ptrPrvX = 0;
-        d->ptrPrvY = 0;
-        d->isTouchDown = false;
-        d->reverseScroll = property_get_bool("persist.waydroid.reverse_scrolling", false);
-        mkfifo(INPUT_PIPE_NAME[INPUT_POINTER], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_POINTER], 1000, 1000);
-        wl_pointer_add_listener(d->pointer, &pointer_listener, d);
-        wl_pointer_gesture_add_listener(d);
-        d->relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(
-				d->relative_pointer_manager, d->pointer);
-        zwp_relative_pointer_v1_add_listener(d->relative_pointer, &relative_pointer_listener,d);
-        // for emulate touch input event
-        d->input_fd[INPUT_TOUCH] = -1;
-        mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
-    } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && d->pointer) {
-        remove(INPUT_PIPE_NAME[INPUT_POINTER]);
-        wl_pointer_destroy(d->pointer);
-        d->pointer = NULL;
-    }
-
-    if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !d->keyboard) {
-        d->keyboard = wl_seat_get_keyboard(seat);
-        d->input_fd[INPUT_KEYBOARD] = -1;
-        mkfifo(INPUT_PIPE_NAME[INPUT_KEYBOARD], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_KEYBOARD], 1000, 1000);
-        wl_keyboard_add_listener(d->keyboard, &keyboard_listener, d);
-    } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && d->keyboard) {
-        remove(INPUT_PIPE_NAME[INPUT_KEYBOARD]);
-        wl_keyboard_destroy(d->keyboard);
-        d->keyboard = NULL;
-    }
-
-    if ((caps & WL_SEAT_CAPABILITY_TOUCH) && !d->touch) {
-        d->touch = wl_seat_get_touch(seat);
-        d->input_fd[INPUT_TOUCH] = -1;
-        mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
-        for (int i = 0; i < MAX_TOUCHPOINTS; i++)
-            d->touch_id[i] = -1;
-        wl_touch_set_user_data(d->touch, d);
-        wl_touch_add_listener(d->touch, &touch_listener, d);
-    } else if (!(caps & WL_SEAT_CAPABILITY_TOUCH) && d->touch) {
-        remove(INPUT_PIPE_NAME[INPUT_TOUCH]);
-        wl_touch_destroy(d->touch);
-        d->touch = NULL;
-    }
-}
-
-static void
-seat_handle_name(void *, struct wl_seat *, const char *)
-{
-}
-
-static const struct wl_seat_listener seat_listener = {
-    seat_handle_capabilities,
-    seat_handle_name,
-};
-
-static void dmabuf_format(void *, struct zwp_linux_dmabuf_v1 *, uint32_t);
-static void
-dmabuf_modifiers(void *data, struct zwp_linux_dmabuf_v1 * dmabuf,
-         uint32_t format, uint32_t modifier_hi, uint32_t modifier_lo)
-{
-    dmabuf_format(data, dmabuf, format);
-
-    struct display *d = (struct display*)data;
-    uint64_t modifier = ((uint64_t)modifier_hi << 32) | modifier_lo;
-    if (modifier == DRM_FORMAT_MOD_INVALID)
-        return;
-
-    std::stringstream prop_name_stream;
-    std::stringstream prop_value_stream;
-    prop_name_stream << "waydroid.modifiers." << std::hex << format << "." << std::dec << d->modifiers[format].size();
-    prop_value_stream << std::hex << modifier;
-    std::string prop_name = prop_name_stream.str();
-    std::string prop_value = prop_value_stream.str();
-    property_set(prop_name.c_str(), prop_value.c_str());
-
-    d->modifiers[format].push_back(modifier);
-}
-
-static void
-dmabuf_format(void *data, struct zwp_linux_dmabuf_v1 *, uint32_t format)
-{
-    struct display *d = (struct display*)data;
-
-    ++d->formats_count;
-    d->formats = (uint32_t*)realloc(d->formats,
-                    d->formats_count * sizeof(*d->formats));
-    d->formats[d->formats_count - 1] = format;
-}
-
-static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
-    dmabuf_format,
-    dmabuf_modifiers
-};
-
-static void
-output_handle_mode(void *data, struct wl_output *,
-                   uint32_t, int32_t width, int32_t height,
-                   int32_t refresh)
-{
-    struct display *d = (struct display *)data;
-    d->refresh = std::max(d->refresh, refresh);
-
-    // Fallback size
-    // We can't do anything meaningful if there's more than one display, just pick one at random
-    // Hopefully these won't need to be used
-    d->full_width = width;
-    d->full_height = height;
-}
-
-static void
-output_handle_geometry(void *, struct wl_output *,
-               int32_t, int32_t,
-               int32_t, int32_t,
-               int32_t,
-               const char *, const char *,
-               int32_t)
-{
-}
-
-static void
-output_handle_done(void *, struct wl_output *)
-{
-}
-
-static void
-output_handle_scale(void *data, struct wl_output *,
-            int32_t scale)
-{
-    struct display *d = (struct display*)data;
-    d->scale = std::max((int)d->scale, scale);
-}
-
-static const struct wl_output_listener output_listener = {
-    output_handle_geometry,
-    output_handle_mode,
-    output_handle_done,
-    output_handle_scale,
-};
-
-static void
-presentation_clock_id(void *, struct wp_presentation *,
-              uint32_t clk_id)
-{
-    ALOGE("*** %s: clk_id %d CLOCK_MONOTONIC %d", __func__, clk_id, CLOCK_MONOTONIC);
-}
-
-static const struct wp_presentation_listener presentation_listener = {
-    presentation_clock_id
-};
-
-static void tablet_seat_handle_add_tablet(void *, struct zwp_tablet_seat_v2 *,
-                                          struct zwp_tablet_v2 *)
-{
-}
-
-static void tablet_seat_handle_add_pad(void*, struct zwp_tablet_seat_v2 *,
-                                       struct zwp_tablet_pad_v2 *)
-{
-}
-
-static void
-tablet_tool_receive_type(void *data, struct zwp_tablet_tool_v2 *tool,
-                         uint32_t type)
-{
-    struct display* display = (struct display*)data;
-    uint16_t evt_code;
-    switch(type) {
-        case ZWP_TABLET_TOOL_V2_TYPE_PEN:
-            evt_code = BTN_TOOL_PEN;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_ERASER:
-            evt_code = BTN_TOOL_RUBBER;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_BRUSH:
-            evt_code = BTN_TOOL_BRUSH;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_PENCIL:
-            evt_code = BTN_TOOL_PENCIL;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_AIRBRUSH:
-            evt_code = BTN_TOOL_AIRBRUSH;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_FINGER:
-            evt_code = BTN_TOOL_FINGER;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_MOUSE:
-            evt_code = BTN_TOOL_MOUSE;
-            break;
-        case ZWP_TABLET_TOOL_V2_TYPE_LENS:
-            evt_code = BTN_TOOL_LENS;
-            break;
-        default:
-            evt_code = BTN_DIGI;
-    }
-    display->tablet_tools_evt[tool] = evt_code;
-}
-
-static void
-tablet_tool_receive_hardware_serial(void *, struct zwp_tablet_tool_v2 *,
-                                    uint32_t, uint32_t)
-{
-}
-
-static void
-tablet_tool_receive_hardware_id_wacom(void *, struct zwp_tablet_tool_v2 *,
-                                      uint32_t, uint32_t)
-{
-}
-
-static void
-tablet_tool_receive_capability(void *, struct zwp_tablet_tool_v2 *, uint32_t)
-{
-}
-
-static void
-tablet_tool_receive_done(void *, struct zwp_tablet_tool_v2 *)
-{
-}
-
-static void
-tablet_tool_receive_removed(void *, struct zwp_tablet_tool_v2 *)
-{
-}
-
-static void
-tablet_tool_proximity_in(void *data, struct zwp_tablet_tool_v2 *tool,
-                         uint32_t, struct zwp_tablet_v2 *,
-                         struct wl_surface *surface)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    display->tablet_surface = surface;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_KEY, display->tablet_tools_evt[tool], 1);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_proximity_out(void *data, struct zwp_tablet_tool_v2 *tool)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    display->tablet_surface = NULL;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_KEY, display->tablet_tools_evt[tool], 0);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_down(void *data, struct zwp_tablet_tool_v2 *, uint32_t)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_KEY, BTN_TOUCH, 1);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_up(void *data, struct zwp_tablet_tool_v2 *)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_KEY, BTN_TOUCH, 0);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_motion(void *data, struct zwp_tablet_tool_v2 *,
-                   wl_fixed_t x_w, wl_fixed_t y_w)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[3];
-    struct timespec rt;
-    int x, y;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-    x = wl_fixed_to_int(x_w);
-    y = wl_fixed_to_int(y_w);
-    if (display->scale != 1) {
-        x = int(x * display->scale);
-        y = int(y * display->scale);
-    }
-    x += display->layers[display->tablet_surface].x;
-    y += display->layers[display->tablet_surface].y;
-
-    ADD_EVENT(EV_ABS, ABS_X, x);
-    ADD_EVENT(EV_ABS, ABS_Y, y);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_pressure(void *data, struct zwp_tablet_tool_v2 *,
-                     uint32_t pressure)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    // wayland value is 16 bits. android expects 8 bits max.
-    pressure >>= 8;
-
-    ADD_EVENT(EV_ABS, ABS_PRESSURE, pressure);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_distance(void *data, struct zwp_tablet_tool_v2 *,
-                     uint32_t distance_raw)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_ABS, ABS_DISTANCE, distance_raw);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_tilt(void *data, struct zwp_tablet_tool_v2 *,
-                 wl_fixed_t tilt_x, wl_fixed_t tilt_y)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[3];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-       ALOGE("%s:%d error in touch clock_gettime: %s",
-            __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_ABS, ABS_TILT_X, wl_fixed_to_int(tilt_x));
-    ADD_EVENT(EV_ABS, ABS_TILT_Y, wl_fixed_to_int(tilt_y));
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_rotation(void *, struct zwp_tablet_tool_v2 *, wl_fixed_t)
-{
-}
-
-static void
-tablet_tool_slider(void *, struct zwp_tablet_tool_v2 *, int32_t)
-{
-}
-
-static void
-tablet_tool_wheel(void *, struct zwp_tablet_tool_v2 *, wl_fixed_t, int32_t)
-{
-}
-
-static void
-tablet_tool_button_state(void *data, struct zwp_tablet_tool_v2 *,
-                         uint32_t, uint32_t button, uint32_t state)
-{
-    struct display* display = (struct display*)data;
-    struct input_event event[2];
-    struct timespec rt;
-    unsigned int res, n = 0;
-
-    if (ensure_pipe(display, INPUT_TABLET))
-        return;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-        ALOGE("%s:%d error in touch clock_gettime: %s",
-              __FILE__, __LINE__, strerror(errno));
-    }
-
-    ADD_EVENT(EV_KEY, button, state);
-    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-
-    res = write(display->input_fd[INPUT_TABLET], &event, sizeof(event));
-    if (res < sizeof(event))
-        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-}
-
-static void
-tablet_tool_frame(void *, struct zwp_tablet_tool_v2 *, uint32_t)
-{
-}
-
-static const struct zwp_tablet_tool_v2_listener tablet_tool_listener = {
-    .type = tablet_tool_receive_type,
-    .hardware_serial = tablet_tool_receive_hardware_serial,
-    .hardware_id_wacom = tablet_tool_receive_hardware_id_wacom,
-    .capability = tablet_tool_receive_capability,
-    .done = tablet_tool_receive_done,
-    .removed = tablet_tool_receive_removed,
-    .proximity_in = tablet_tool_proximity_in,
-    .proximity_out = tablet_tool_proximity_out,
-    .down = tablet_tool_down,
-    .up = tablet_tool_up,
-    .motion = tablet_tool_motion,
-    .pressure = tablet_tool_pressure,
-    .distance = tablet_tool_distance,
-    .tilt = tablet_tool_tilt,
-    .rotation = tablet_tool_rotation,
-    .slider = tablet_tool_slider,
-    .wheel = tablet_tool_wheel,
-    .button = tablet_tool_button_state,
-    .frame = tablet_tool_frame
-};
-
-static void tablet_seat_handle_add_tool(void *data, struct zwp_tablet_seat_v2 *,
-                            struct zwp_tablet_tool_v2 *tool)
-{
-    struct display *d = (struct display*)data;
-    d->tablet_tools.push_back(tool);
-    zwp_tablet_tool_v2_add_listener(tool, &tablet_tool_listener, d);
-    ALOGI("Added tablet tool");
-}
-
-static const struct zwp_tablet_seat_v2_listener tablet_seat_listener = {
-    tablet_seat_handle_add_tablet,
-    tablet_seat_handle_add_tool,
-    tablet_seat_handle_add_pad
-};
-
-static void add_tablet_seat(struct display *d) {
-    d->input_fd[INPUT_TABLET] = -1;
-    mkfifo(INPUT_PIPE_NAME[INPUT_TABLET], S_IRWXO | S_IRWXG | S_IRWXU);
-    chown(INPUT_PIPE_NAME[INPUT_TABLET], 1000, 1000);
-
-    d->tablet_seat = zwp_tablet_manager_v2_get_tablet_seat(d->tablet_manager, d->seat);
-    zwp_tablet_seat_v2_add_listener(d->tablet_seat, &tablet_seat_listener, d);
-}
-
-static void
-registry_handle_global(void *data, struct wl_registry *registry,
-               uint32_t id, const char *interface, uint32_t version)
-{
-    struct display *d = (struct display*)data;
-
-    if (strcmp(interface, "wl_compositor") == 0) {
-        d->compositor =
-            (struct wl_compositor*)wl_registry_bind(registry,
-                id, &wl_compositor_interface, std::min(version, 5U));
-    } else if (strcmp(interface, "wl_subcompositor") == 0) {
-        d->subcompositor =
-        (struct wl_subcompositor*)wl_registry_bind(registry,
-                id, &wl_subcompositor_interface, 1);
-    } else if (strcmp(interface, "xdg_wm_base") == 0) {
-        d->wm_base = (struct xdg_wm_base*)wl_registry_bind(registry,
-                id, &xdg_wm_base_interface, 1);
-        xdg_wm_base_add_listener(d->wm_base, &xdg_wm_base_listener, d);
-    } else if(strcmp(interface, "wl_shell") == 0) {
-        d->shell = (struct wl_shell *)wl_registry_bind(
-                registry, id, &wl_shell_interface, 1);
-    } else if (strcmp(interface, "wl_seat") == 0) {
-        d->seat = (struct wl_seat*)wl_registry_bind(registry, id,
-                &wl_seat_interface, std::min(version, (uint32_t)WL_POINTER_AXIS_SOURCE_SINCE_VERSION));
-        wl_seat_add_listener(d->seat, &seat_listener, d);
-        if (d->tablet_manager && !d->tablet_seat)
-            add_tablet_seat(d);
-    } else if (strcmp(interface, "wl_shm") == 0) {
-		d->shm = (struct wl_shm *)wl_registry_bind(registry, id,
-                &wl_shm_interface, 1);
-    } else if (strcmp(interface, "wl_output") == 0) {
-        d->output = (struct wl_output*)wl_registry_bind(registry, id,
-                &wl_output_interface, std::min(version, 3U));
-        wl_output_add_listener(d->output, &output_listener, d);
-        wl_display_roundtrip(d->display);
-    } else if (strcmp(interface, "wp_presentation") == 0) {
-        bool no_presentation = property_get_bool("persist.waydroid.no_presentation", false);
-        if (!no_presentation) {
-            d->presentation = (struct wp_presentation*)wl_registry_bind(registry, id,
-                    &wp_presentation_interface, 1);
-            wp_presentation_add_listener(d->presentation,
-                    &presentation_listener, d);
-        }
-    } else if (strcmp(interface, "wp_viewporter") == 0) {
-        d->viewporter = (struct wp_viewporter*)wl_registry_bind(registry, id,
-                &wp_viewporter_interface, 1);
-    } else if ((d->gtype == GRALLOC_ANDROID) &&
-               (strcmp(interface, "android_wlegl") == 0)) {
-        d->android_wlegl = (struct android_wlegl*)wl_registry_bind(registry, id,
-                &android_wlegl_interface, 1);
-    } else if ((d->gtype == GRALLOC_GBM || d->gtype == GRALLOC_CROS || d->gtype == GRALLOC_X100  ||
-        d->gtype == GRALLOC_RANCHU || d->gtype == GRALLOC_LEOPARD)  &&  (strcmp(interface, "zwp_linux_dmabuf_v1") == 0)) {
-        if (version < 3)
-            return;
-        d->dmabuf = (struct zwp_linux_dmabuf_v1*)wl_registry_bind(registry, id,
-                &zwp_linux_dmabuf_v1_interface, 3);
-        zwp_linux_dmabuf_v1_add_listener(d->dmabuf, &dmabuf_listener, d);
-    } else if (strcmp(interface, "zwp_tablet_manager_v2") == 0) {
-        d->tablet_manager = (struct zwp_tablet_manager_v2 *)wl_registry_bind(registry, id,
-                &zwp_tablet_manager_v2_interface, 1);
-        if (d->tablet_manager && d->seat)
-            add_tablet_seat(d);
-    } else if (strcmp(interface, "zwp_pointer_constraints_v1") == 0) {
-        d->pointer_constraints = (struct zwp_pointer_constraints_v1 *)wl_registry_bind(
-                registry, id, &zwp_pointer_constraints_v1_interface, 1);
-    } else if (strcmp(interface, "zwp_relative_pointer_manager_v1") == 0) {
-        d->relative_pointer_manager = (struct zwp_relative_pointer_manager_v1 *)wl_registry_bind(
-                registry, id, &zwp_relative_pointer_manager_v1_interface, 1);
-    } else if (strcmp(interface, "zwp_idle_inhibit_manager_v1") == 0) {
-        d->idle_manager = (struct zwp_idle_inhibit_manager_v1 *)wl_registry_bind(
-                registry, id, &zwp_idle_inhibit_manager_v1_interface, 1);
-    } else if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
-        d->fractional_scale_manager = (struct wp_fractional_scale_manager_v1*)wl_registry_bind(registry, id,
-                &wp_fractional_scale_manager_v1_interface, 1);
-    }else if (strcmp(interface, "zwp_pointer_gestures_v1") == 0) {
-        d->pointer_gestures = (struct zwp_pointer_gestures_v1 *)wl_registry_bind(
-                registry, id, &zwp_pointer_gestures_v1_interface, 1);
-     }
-}
-
-static void
-registry_handle_global_remove(void *, struct wl_registry *, uint32_t)
-{
-}
-
-static const struct wl_registry_listener registry_listener = {
-    registry_handle_global,
-    registry_handle_global_remove
-};
-
-static int
-str_starts_with(const char *a, const char *b)
-{
-    return strncmp(a, b, strlen(b));
-}
-
-int
-get_gralloc_type(const char *gralloc)
-{
-    if (strcmp(gralloc, "default") == 0) {
-        return GRALLOC_DEFAULT;
-    } else if (strcmp(gralloc, "gbm") == 0) {
-        return GRALLOC_GBM;
-    } else if (strcmp(gralloc, "ranchu") == 0) {
-    return GRALLOC_RANCHU;
-    } else if (str_starts_with(gralloc, "minigbm_") == 0) {
-        return GRALLOC_CROS;
-    } else if (strcmp(gralloc, "ft2004") == 0) {
-        return GRALLOC_X100;
-    } else if (strcmp(gralloc, "LEOPARD") == 0) {
-        return GRALLOC_LEOPARD;
-    } else {
-        return GRALLOC_ANDROID;
-    }
-}
-
-static void
-wayland_log_handler (const char *format, va_list args)
-{
-    LOG_PRI_VA (ANDROID_LOG_ERROR, "wayland-hwc", format, args);
-}
 
 struct display *
 create_display(const char *gralloc)
@@ -2463,17 +1301,17 @@ create_display(const char *gralloc)
         ALOGE("out of memory");
         return NULL;
     }
-    wl_log_set_handler_client(wayland_log_handler);
+    // wl_log_set_handler_client(wayland_log_handler);
     display->gtype = get_gralloc_type(gralloc);
     display->refresh = 0;
     display->isMaximized = true;
-    display->display = wl_display_connect(NULL);
-    ALOGI("WAYLAND_DISPLAY: %s", getenv("WAYLAND_DISPLAY"));
-    ALOGI("XDG_RUNTIME_DIR: %s", getenv("XDG_RUNTIME_DIR"));
-    if (!display->display) {
-        ALOGE("Couldn't open Wayland display.");
-        return NULL;
-    }
+    // display->display = wl_display_connect(NULL);
+    // ALOGI("WAYLAND_DISPLAY: %s", getenv("WAYLAND_DISPLAY"));
+    // ALOGI("XDG_RUNTIME_DIR: %s", getenv("XDG_RUNTIME_DIR"));
+    // if (!display->display) {
+    //     ALOGE("Couldn't open Wayland display.");
+    //     return NULL;
+    // }
      display->xcbconnection = xcb_connect_to_display_with_auth_info("unix:/tmp/.X11-unix/X0", NULL, NULL);
     if (xcb_connection_has_error(display->xcbconnection)) {
         ALOGE("Couldn't connect to X11 display.");
@@ -2489,49 +1327,78 @@ create_display(const char *gralloc)
     umask(0);
     mkdir("/dev/input", S_IRWXO | S_IRWXG | S_IRWXU);
     chown("/dev/input", 1000, 1000);
-    display->registry = wl_display_get_registry(display->display);
-    wl_registry_add_listener(display->registry,
-                 &registry_listener, display);
-    wl_display_roundtrip(display->display);
+    // display->registry = wl_display_get_registry(display->display);
+    // wl_registry_add_listener(display->registry,
+    //              &registry_listener, display);
+    // wl_display_roundtrip(display->display);
 
     display->task = IWaydroidTask::getService();
     display->isTouchDown = false;
     display->lastAxisEventNanoSeconds = 0;
     display->gesture_scale = 260;
+    display->scale = 1.0;
+    display->full_width=1920;
+    display->full_height=1280;
+     struct display *d = (struct display*)display;
+      d->input_fd[INPUT_POINTER] = -1;
+        d->ptrPrvX = 0;
+        d->ptrPrvY = 0;
+        d->isTouchDown = false;
+        d->reverseScroll = property_get_bool("persist.waydroid.reverse_scrolling", false);
+        mkfifo(INPUT_PIPE_NAME[INPUT_POINTER], S_IRWXO | S_IRWXG | S_IRWXU);
+        chown(INPUT_PIPE_NAME[INPUT_POINTER], 1000, 1000);
+        // for emulate touch input event
+        d->input_fd[INPUT_TOUCH] = -1;
+        mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
+        chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
+     register_key_press_callback(on_key_press);
+    register_key_release_callback(on_key_release);
+    register_button_press_callback(on_button_press);
+    register_button_release_callback(on_button_release);
+    register_motion_notify_callback(on_motion_notify);
+
+    pthread_t event_thread;
+    if (pthread_create(&event_thread, NULL, event_loop_thread, display) != 0) {
+        ALOGE("Unable to create event processing thread\n");
+    }
     return display;
 }
+
+
+
+
 
 void
 destroy_display(struct display *display)
 {
-    if (display->wm_base)
-        xdg_wm_base_destroy(display->wm_base);
+    // if (display->wm_base)
+    //     xdg_wm_base_destroy(display->wm_base);
 
-    if (display->shell)
-        wl_shell_destroy(display->shell);
+    // if (display->shell)
+    //     wl_shell_destroy(display->shell);
 
-    if (display->compositor)
-        wl_compositor_destroy(display->compositor);
+    // if (display->compositor)
+    //     wl_compositor_destroy(display->compositor);
 
-    if (display->tablet_manager) {
-        for (struct zwp_tablet_tool_v2 *t : display->tablet_tools) {
-            zwp_tablet_tool_v2_destroy(t);
-        }
-        zwp_tablet_seat_v2_destroy(display->tablet_seat);
-        zwp_tablet_manager_v2_destroy(display->tablet_manager);
-    }
+    // if (display->tablet_manager) {
+    //     for (struct zwp_tablet_tool_v2 *t : display->tablet_tools) {
+    //         zwp_tablet_tool_v2_destroy(t);
+    //     }
+    //     zwp_tablet_seat_v2_destroy(display->tablet_seat);
+    //     zwp_tablet_manager_v2_destroy(display->tablet_manager);
+    // }
 
-    if (display->relative_pointer_manager)
-        zwp_relative_pointer_manager_v1_destroy(display->relative_pointer_manager);
+    // if (display->relative_pointer_manager)
+    //     zwp_relative_pointer_manager_v1_destroy(display->relative_pointer_manager);
 
-    if (display->pointer_constraints)
-        zwp_pointer_constraints_v1_destroy(display->pointer_constraints);
+    // if (display->pointer_constraints)
+    //     zwp_pointer_constraints_v1_destroy(display->pointer_constraints);
 
-    release_pointer_gestures_device(display);
+    // release_pointer_gestures_device(display);
 
-    wl_registry_destroy(display->registry);
-    wl_display_flush(display->display);
-    wl_display_disconnect(display->display);
+    // wl_registry_destroy(display->registry);
+    // wl_display_flush(display->display);
+    // wl_display_disconnect(display->display);
     delete display;
 }
 
