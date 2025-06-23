@@ -361,7 +361,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow,
 			     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
 			    (uint32_t[]){drm_handle->width -20 ,drm_handle->height - 20});
-			//xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
+			xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
 	        }
 		int x11_fd = dup(drm_handle->prime_fd);
 		if (x11_fd >= 0) {

@@ -1202,7 +1202,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     uint32_t value_list[] = {
         0,  // 设置不透明的黑色背景，避免窗口透明
         0,
-        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS,
+        XCB_EVENT_MASK_EXPOSURE,
         display->colormap
     };
 
@@ -1396,7 +1396,6 @@ create_display(const char *gralloc)
     register_button_press_callback(on_button_press);
     register_button_release_callback(on_button_release);
     register_motion_notify_callback(on_motion_notify);
-    display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
     if (! find_argb_visual(display)){
 	    ALOGE("can't find argb visualid");
 	    return NULL;
