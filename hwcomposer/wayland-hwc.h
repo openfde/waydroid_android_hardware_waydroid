@@ -62,6 +62,8 @@
 #include <xcb/dri3.h>
 #include <xcb/present.h>
 #include <xcb/xproto.h>
+#include <Xlib-xcb.h>
+#include <Xrender.h>
 
 using ::android::sp;
 using ::vendor::waydroid::task::V1_0::IWaydroidTask;
@@ -109,6 +111,9 @@ struct window;
 
 struct display {
     struct wl_display *display;
+    xcb_visualid_t visualid;
+    xcb_colormap_t colormap;
+    Display * x11display;
     xcb_connection_t *xcbconnection;
     xcb_screen_t *xcbscreen;
     struct wl_registry *registry;

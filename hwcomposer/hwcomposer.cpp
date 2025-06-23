@@ -278,6 +278,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     if (!height)
         height = layer->displayFrame.bottom - layer->displayFrame.top;
 
+    ALOGE("displayframe width %d, hegith %d", width,height);
     auto it = pdev->display->buffer_map.find(layer->handle);
     if (it != pdev->display->buffer_map.end()) {
 	    ALOGE("find buf from map for %s %d layerhandle %p", window->appID.c_str(), window->lastLayer,(int *)layer->handle);
@@ -307,19 +308,16 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	ALOGE("in gbm dma buf");
             // ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL ) {
-		    if (window->lastLayer != 0 ) {
-			    ALOGE("hellolastlayer=1 %d name=%s",window->lastLayer,window->appID.c_str());
-		    }
-                if (window->xcbwindow == 0 ){
-			ALOGE("main xcbwindow is 0 %s",window->appID.c_str());
-                }else {
-		    cancel_maximum(pdev->display->xcbconnection, pdev->display->xcbscreen,window->xcbwindow);
-		    ALOGE("adjust main window size %d %d", drm_handle->width,drm_handle->height);
-                    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow,
+		if (window->lastLayer == 0 ){
+
+		    /*cancel_maximum(pdev->display->xcbconnection, pdev->display->xcbscreen,window->xcbwindow);
+		    ALOGE("adjust main window size %d %d",width ,height);
+		    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow,
 				     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-				    (uint32_t[]){drm_handle->width-20,drm_handle->height-20});
-                    xcb_flush(pdev->display->xcbconnection);
-                }
+				    (uint32_t[]){width-20,height-20});
+		    xcb_flush(pdev->display->xcbconnection);
+		    */
+		}
                 
                 xcb_window_t xcbwindow = window->xcbwindow;
                 if (pdev->use_subsurface ) {
@@ -332,7 +330,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 
 		    	ALOGE("create child_window windows[window->lastlayer] %d %d ",child_window,window->lastLayer);
                         xcb_create_window( pdev->display->xcbconnection,
-                            XCB_COPY_FROM_PARENT,         // depth
+                            32,         // depth
                             child_window,                 // window Id
                             window->xcbwindow,            // parent window
 			    //pdev->display->xcbscreen->root,
@@ -343,8 +341,8 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                             XCB_COPY_FROM_PARENT,         // visual
                             mask, values                  // masks
                         );
+		       xcb_map_window(pdev->display->xcbconnection,child_window);
                         window->xcbwindows[window->lastLayer] = child_window;
-                        xcb_map_window(pdev->display->xcbconnection, child_window);
                         window->xcbgcs[window->lastLayer] = xcb_generate_id(pdev->display->xcbconnection);
                         xcb_create_gc(pdev->display->xcbconnection,window->xcbgcs[window->lastLayer], window->xcbwindows[window->lastLayer], 0, NULL);
                         xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, xcbwindow, 0);
@@ -360,11 +358,10 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                         window->dri3_fds[window->lastLayer] = dri3_fd;
                     }
                     xcbwindow = window->xcbwindows[window->lastLayer];
-		    remove_title(pdev->display->xcbconnection,xcbwindow);
 		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow,
 			     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
 			    (uint32_t[]){drm_handle->width -20 ,drm_handle->height - 20});
-		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
+			//xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
 	        }
 		int x11_fd = dup(drm_handle->prime_fd);
 		if (x11_fd >= 0) {
@@ -373,7 +370,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
                 xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
-                    drm_handle->width * drm_handle->height * 4, drm_handle->width, drm_handle->height,drm_handle->stride, 24, 32, x11_fd);
+                    drm_handle->width * drm_handle->height * 4, drm_handle->width, drm_handle->height,drm_handle->stride, 32,32,x11_fd);
                 xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
                 // xcb_flush(pdev->display->xcbconnection);
 
@@ -479,13 +476,14 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     xcb_configure_window_value_list_t values;
     values.x = floor(layer->displayFrame.left / pdev->display->scale);
     values.y = floor(layer->displayFrame.top / pdev->display->scale);
+    ALOGE("move layer=%d to x %d y %d", window->lastLayer,values.x,values.y);
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
-    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
+   //xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
 
-     /*if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
+     if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
          xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
          xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
-     }*/
+     }
 
     /*pdev->display->layers[window->xcbwindows[window->lastLayer]] = {
         .x = layer->displayFrame.left,

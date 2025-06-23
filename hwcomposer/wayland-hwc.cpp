@@ -83,6 +83,7 @@ const int AXIS_TOUCH_TRACKING_ID = AXIS_TOUCH_SLOT_ID;
 
 struct buffer;
 
+static int find_argb_visual(struct display *display) ;
 void
 destroy_buffer(struct display * display ,struct buffer* buf) {
     if (buf->xcbpixmap) {
@@ -1194,16 +1195,49 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         if (!display->width)
             display->width = display->full_width / display->scale;
     }
+     display->colormap = xcb_generate_id(display->xcbconnection);
+        xcb_create_colormap(display->xcbconnection, XCB_COLORMAP_ALLOC_NONE, display->colormap, display->xcbscreen->root, display->visualid);
 
+    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP;
+    uint32_t value_list[] = {
+        0,  // 设置不透明的黑色背景，避免窗口透明
+        0,
+        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS,
+        display->colormap
+    };
 
      window->xcbwindow = xcb_generate_id(display->xcbconnection);
+    xcb_create_window(display->xcbconnection,
+                    32,
+                    window->xcbwindow,
+                    display->xcbscreen->root,
+                    0, 0, display->width, display->height, 0,
+                    XCB_WINDOW_CLASS_INPUT_OUTPUT,
+                    display->visualid,
+                    value_mask, value_list);
 
-    uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
-        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION};
 
-    xcb_create_window(display->xcbconnection, XCB_COPY_FROM_PARENT, window->xcbwindow, display->xcbscreen->root, 0, 0, display->width, display->height, 0,
-                            XCB_WINDOW_CLASS_INPUT_OUTPUT, display->xcbscreen->root_visual, value_mask, value_list);
+    window->xcbgc = xcb_generate_id(display->xcbconnection);
+    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
+    remove_title(display->xcbconnection, window->xcbwindow);
+
+    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
+    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
+    if (!dri3_reply) {
+        ALOGE("Cannot open DRI3 connection");
+        return NULL;
+    }
+    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
+    free(dri3_reply);
+    if (window->dri3_fd < 0) {
+        ALOGE("Cannot get DRI3 file descriptor");
+        return NULL;
+    }
+    xcb_map_window(display->xcbconnection, window->xcbwindow);
+
+
+
+
     xcb_change_property(
         display->xcbconnection,
         XCB_PROP_MODE_REPLACE,
@@ -1216,14 +1250,9 @@ uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSUR
     );
     ALOGE("gy xcreate xcb window %s",appID_title.c_str());
 
-
+/*
     window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
-    remove_title(display->xcbconnection, window->xcbwindow);
-
-    xcb_map_window(display->xcbconnection, window->xcbwindow);
-
-
 
     xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
     xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
@@ -1235,6 +1264,8 @@ uint32_t value_list[] = {display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSUR
     if (window->dri3_fd < 0) {
         ALOGE("Cannot get DRI3 file descriptor");
     }
+    xcb_map_window(display->xcbconnection, window->xcbwindow);
+    */
 
     // No subsurface background for us!
     // if (!use_subsurfaces && !display->subcompositor)
@@ -1312,7 +1343,16 @@ create_display(const char *gralloc)
     //     ALOGE("Couldn't open Wayland display.");
     //     return NULL;
     // }
-     display->xcbconnection = xcb_connect_to_display_with_auth_info("unix:/tmp/.X11-unix/X0", NULL, NULL);
+
+    display->x11display = NULL;
+    display->x11display = XOpenDisplay("unix:/tmp/.X11-unix/X0");
+    if (!display->x11display){
+        ALOGE("Couldn't connect to X11 display.");
+	return NULL;
+    }
+    /*display->xcbconnection = xcb_connect_to_display_with_auth_info("unix:/tmp/.X11-unix/X0", NULL, NULL);
+     */
+	display->xcbconnection = XGetXCBConnection(display->x11display);
     if (xcb_connection_has_error(display->xcbconnection)) {
         ALOGE("Couldn't connect to X11 display.");
         xcb_disconnect(display->xcbconnection);
@@ -1356,6 +1396,12 @@ create_display(const char *gralloc)
     register_button_press_callback(on_button_press);
     register_button_release_callback(on_button_release);
     register_motion_notify_callback(on_motion_notify);
+    display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
+    if (! find_argb_visual(display)){
+	    ALOGE("can't find argb visualid");
+	    return NULL;
+    }
+
 
     pthread_t event_thread;
     if (pthread_create(&event_thread, NULL, event_loop_thread, display) != 0) {
@@ -1422,3 +1468,27 @@ int remove_title(xcb_connection_t *conn, xcb_window_t main_win){
     return 0;
 }
 
+static int find_argb_visual(struct display *display) {
+    XVisualInfo vinfo_template = { .screen = DefaultScreen(display->x11display), .depth = 32, .c_class = TrueColor };
+    int n_vinfo;
+    XVisualInfo *vinfo = XGetVisualInfo(display->x11display, VisualScreenMask | VisualDepthMask | VisualClassMask, &vinfo_template, &n_vinfo);
+
+    if (!vinfo) {
+        ALOGE("✗ 未找到32位深度的Visual");
+        return 0;
+    }
+
+    for (int i = 0; i < n_vinfo; i++) {
+        XRenderPictFormat *format = XRenderFindVisualFormat(display->x11display, vinfo[i].visual);
+        if (format && format->type == PictTypeDirect && format->direct.alphaMask) {
+            ALOGE("  ✓ 找到ARGB Visual: id=0x%lx\n", vinfo[i].visualid);
+            display->visualid  = vinfo[i].visualid;
+            XFree(vinfo);
+            return 1;
+        }
+    }
+
+    ALOGE("  ✗ 未找到带Alpha通道的Visual\n");
+    XFree(vinfo);
+    return 0;
+}
