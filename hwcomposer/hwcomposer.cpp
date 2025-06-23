@@ -314,7 +314,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 		    ALOGE("adjust main window size %d %d",width ,height);
 		    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow,
 				     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-				    (uint32_t[]){width-20,height-20});
+				    (uint32_t[]){width,height});
 		    xcb_flush(pdev->display->xcbconnection);
 		    */
 		}
@@ -335,7 +335,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                             window->xcbwindow,            // parent window
 			    //pdev->display->xcbscreen->root,
                             0, 0,                         // x, y
-                            drm_handle->width-20, drm_handle->height-20,                // width, height
+                            drm_handle->width, drm_handle->height,                // width, height
                             0,                            // border width
                             XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
                             XCB_COPY_FROM_PARENT,         // visual
@@ -360,7 +360,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     xcbwindow = window->xcbwindows[window->lastLayer];
 		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow,
 			     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-			    (uint32_t[]){drm_handle->width -20 ,drm_handle->height - 20});
+			    (uint32_t[]){drm_handle->width,drm_handle->height});
 			xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
 	        }
 		int x11_fd = dup(drm_handle->prime_fd);
@@ -1064,7 +1064,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 window->xcbwindows[window->lastLayer],     // 目标窗口
                 window->xcbgcs[window->lastLayer],         // 图形上下文
                 0, 0,           // 源坐标 (x, y)
-                -10, -10,           // 目标坐标 (x, y)
+                0, 0,           // 目标坐标 (x, y)
                 buf->width,          // 宽度
                 buf->height         // 高度
              );
