@@ -432,10 +432,41 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     ALOGE("move layer=%d to x %d y %d", window->lastLayer,values.x,values.y);
     // uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
    //xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
+    // Calculate source crop dimensions
+    int src_x = fmax(0, sourceCrop.left);
+    int src_y = fmax(0, sourceCrop.top);
+    int src_width = fmax(1, sourceCrop.right - sourceCrop.left);
+    int src_height = fmax(1, sourceCrop.bottom - sourceCrop.top);
 
-    // XRenderFillRectangle(pdev->display->x11display, PictOpOver, buf->xpicture, &clear_color,values.x,values.y,buf->width,buf->height);
+    // Calculate destination dimensions (scaled)
+    int dst_width = fmax(1, ceil((layer->displayFrame.right - layer->displayFrame.left) / pdev->display->scale));
+    int dst_height = fmax(1, ceil((layer->displayFrame.bottom - layer->displayFrame.top) / pdev->display->scale));
+
+    // Set up transformation matrix for scaling if needed
+    if (src_width != dst_width || src_height != dst_height) {
+        XTransform scale_transform;
+        double scale_x = (double)src_width / dst_width;
+        double scale_y = (double)src_height / dst_height;
+        
+        scale_transform.matrix[0][0] = XDoubleToFixed(scale_x);
+        scale_transform.matrix[0][1] = XDoubleToFixed(0.0);
+        scale_transform.matrix[0][2] = XDoubleToFixed(0.0);
+        scale_transform.matrix[1][0] = XDoubleToFixed(0.0);
+        scale_transform.matrix[1][1] = XDoubleToFixed(scale_y);
+        scale_transform.matrix[1][2] = XDoubleToFixed(0.0);
+        scale_transform.matrix[2][0] = XDoubleToFixed(0.0);
+        scale_transform.matrix[2][1] = XDoubleToFixed(0.0);
+        scale_transform.matrix[2][2] = XDoubleToFixed(1.0);
+        
+        XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &scale_transform);
+    }
+
+    // Composite the cropped and scaled region
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
-                    0, 0, 0, 0, values.x, values.y, buf->width, buf->height);
+                    src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
+    // XRenderFillRectangle(pdev->display->x11display, PictOpOver, buf->xpicture, &clear_color,values.x,values.y,buf->width,buf->height);
+    // XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
+    //                 0, 0, 0, 0, values.x, values.y, buf->width, buf->height);
     //  if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
     //      xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
     //      xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
@@ -504,9 +535,6 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     xcb_configure_window_value_list_t values;
     values.x = floor(layer->displayFrame.left / pdev->display->scale);
     values.y = floor(layer->displayFrame.top / pdev->display->scale);
-    uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
-    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
-
     wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
                                floor(layer->displayFrame.left / pdev->display->scale),
                                floor(layer->displayFrame.top / pdev->display->scale));
