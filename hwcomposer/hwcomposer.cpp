@@ -1034,9 +1034,9 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         //     // With no viewporter the scale is guaranteed to be integer
         //     wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
         // }
+	XTransform transform;
         switch (fb_layer->transform) {
             case HWC_TRANSFORM_FLIP_H:
-                XTransform transform;
                 transform.matrix[0][0] = XDoubleToFixed(-1.0); // scale x by -1
                 transform.matrix[0][1] = XDoubleToFixed(0.0);
                 transform.matrix[0][2] = XDoubleToFixed(buf->width);
@@ -1049,7 +1049,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
                 break;
             case HWC_TRANSFORM_FLIP_V:
-                XTransform transform;
                 transform.matrix[0][0] = XDoubleToFixed(1.0);
                 transform.matrix[0][1] = XDoubleToFixed(0.0);
                 transform.matrix[0][2] = XDoubleToFixed(0.0);
@@ -1062,7 +1061,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
                 break;
             case HWC_TRANSFORM_ROT_90:
-                XTransform transform;
                 transform.matrix[0][0] = XDoubleToFixed(0.0);
                 transform.matrix[0][1] = XDoubleToFixed(-1.0);
                 transform.matrix[0][2] = XDoubleToFixed(buf->height);
@@ -1128,11 +1126,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         // wl_surface_commit(it->second->surfaces[l]);
                     }
                 }
-                for (size_t l = it->second->lastLayer; l < it->second->xcbwindows.size();l++){
-                      if (it->second->xcbwindows.find(l) != it->second->xcbwindows.end()) {
-                            xcb_clear_area(pdev->display->xcbconnection, 0,it->second->xcbwindows[l],0,0,0,0);
-                        }
-                } 
             }
         }
         pdev->display->geo_changed = false;
