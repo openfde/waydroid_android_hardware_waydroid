@@ -1015,6 +1015,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
       
           if (pdev->use_subsurface ) {
             //    XRenderColor clear_color = {0, 0, 0, 0}; // 完全透明
+            XRenderFillRectangle(pdev->display->x11display, PictOpClear, window->xpicture, &clear_color, 
+                                     0, 0, pdev->display->width, pdev->display->height);
             adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
             XFlush(pdev->display->x11display);
             ALOGE("gy copy_area width %d, height %d", buf->width, buf->height);
