@@ -308,77 +308,30 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	ALOGE("in gbm dma buf");
             // ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL ) {
-		if (window->lastLayer == 0 ){
-
-		    /*cancel_maximum(pdev->display->xcbconnection, pdev->display->xcbscreen,window->xcbwindow);
-		    ALOGE("adjust main window size %d %d",width ,height);
-		    xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow,
-				     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-				    (uint32_t[]){width,height});
-		    xcb_flush(pdev->display->xcbconnection);
-		    */
-		}
-                
                 xcb_window_t xcbwindow = window->xcbwindow;
-                if (pdev->use_subsurface ) {
-                    ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
-                    if (window->xcbwindows.find(window->lastLayer) == window->xcbwindows.end()) {
-                        xcb_window_t child_window = xcb_generate_id(pdev->display->xcbconnection);
-			   uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-        uint32_t values[] = {pdev->display->xcbscreen->black_pixel, XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
-        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION};
-
-		    	ALOGE("create child_window windows[window->lastlayer] %d %d ",child_window,window->lastLayer);
-                        xcb_create_window( pdev->display->xcbconnection,
-                            32,         // depth
-                            child_window,                 // window Id
-                            window->xcbwindow,            // parent window
-			    //pdev->display->xcbscreen->root,
-                            0, 0,                         // x, y
-                            drm_handle->width, drm_handle->height,                // width, height
-                            0,                            // border width
-                            XCB_WINDOW_CLASS_INPUT_OUTPUT,// class
-                            XCB_COPY_FROM_PARENT,         // visual
-                            mask, values                  // masks
-                        );
-		       xcb_map_window(pdev->display->xcbconnection,child_window);
-                        window->xcbwindows[window->lastLayer] = child_window;
-                        window->xcbgcs[window->lastLayer] = xcb_generate_id(pdev->display->xcbconnection);
-                        xcb_create_gc(pdev->display->xcbconnection,window->xcbgcs[window->lastLayer], window->xcbwindows[window->lastLayer], 0, NULL);
-                        xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(pdev->display->xcbconnection, xcbwindow, 0);
-                        xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(pdev->display->xcbconnection, dri3_cookie, NULL);
-                        if (!dri3_reply) {
-                            ALOGE("Cannot open DRI3 connection");
-                        }
-                        int dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(pdev->display->xcbconnection, dri3_reply)[0] : -1;
-                        free(dri3_reply);
-                        if (dri3_fd < 0) {
-                            ALOGE("Cannot get DRI3 file descriptor");
-                        }
-                        window->dri3_fds[window->lastLayer] = dri3_fd;
-                    }
-                    xcbwindow = window->xcbwindows[window->lastLayer];
-		    xcb_configure_window(pdev->display->xcbconnection, xcbwindow,
-			     XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT,
-			    (uint32_t[]){drm_handle->width,drm_handle->height});
-			xcb_configure_window(pdev->display->xcbconnection, xcbwindow, XCB_CONFIG_WINDOW_STACK_MODE, (uint32_t[]){XCB_STACK_MODE_ABOVE});
-	        }
-		int x11_fd = dup(drm_handle->prime_fd);
-		if (x11_fd >= 0) {
-		    fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
+                int x11_fd = dup(drm_handle->prime_fd);
+                if (x11_fd >= 0) {
+                    fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
                 }
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
+                XRenderPictureAttributes pa;
+                pa.repeat = False;
                 xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
                     drm_handle->width * drm_handle->height * 4, drm_handle->width, drm_handle->height,drm_handle->stride, 32,32,x11_fd);
                 xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-                // xcb_flush(pdev->display->xcbconnection);
-
                 if (pixmap_error) {
                     ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
                     free(pixmap_error);
                 }
-		close(x11_fd);
+                if (pdev->use_subsurface ) {
+                    ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
+                    buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
+                }else {
+                    buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
+                }
+            
+                close(x11_fd);
             }
 		} else {
 		    ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
@@ -461,7 +414,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             fmax(1, ceil((frame.bottom - frame.top) / display->scale)));
 }
 */
-static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_layer_1_t * layer, struct window *window, bool use_subsurface){
+static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_layer_1_t * layer, struct buffer *buf, struct window *window, bool use_subsurface){
     if (!use_subsurface)
         return  0;
     hwc_rect_t sourceCrop = layer->sourceCropi;
@@ -477,13 +430,16 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     values.x = floor(layer->displayFrame.left / pdev->display->scale);
     values.y = floor(layer->displayFrame.top / pdev->display->scale);
     ALOGE("move layer=%d to x %d y %d", window->lastLayer,values.x,values.y);
-    uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
+    // uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
    //xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
 
-     if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
-         xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
-         xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
-     }
+    // XRenderFillRectangle(pdev->display->x11display, PictOpOver, buf->xpicture, &clear_color,values.x,values.y,buf->width,buf->height);
+    XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
+                    0, 0, 0, 0, values.x, values.y, buf->width, buf->height);
+    //  if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
+    //      xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
+    //      xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
+    //  }
 
     /*pdev->display->layers[window->xcbwindows[window->lastLayer]] = {
         .x = layer->displayFrame.left,
@@ -1056,28 +1012,15 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         //     ALOGE("Failed to get surface");
         //     continue;
         // }
-        adjust_window_geo(pdev, fb_layer, window, pdev->use_subsurface);
+      
           if (pdev->use_subsurface ) {
-		ALOGE("gy copy_area width %d, height %d", buf->width, buf->height);
-                xcb_copy_area(pdev->display->xcbconnection,
-                buf->xcbpixmap,         // 源 Pixmap
-                window->xcbwindows[window->lastLayer],     // 目标窗口
-                window->xcbgcs[window->lastLayer],         // 图形上下文
-                0, 0,           // 源坐标 (x, y)
-                0, 0,           // 目标坐标 (x, y)
-                buf->width,          // 宽度
-                buf->height         // 高度
-             );
+            //    XRenderColor clear_color = {0, 0, 0, 0}; // 完全透明
+            adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
+            XFlush(pdev->display->x11display);
+            ALOGE("gy copy_area width %d, height %d", buf->width, buf->height);
         }else {
-            xcb_copy_area(pdev->display->xcbconnection,
-                        buf->xcbpixmap,         // 源 Pixmap
-                        window->xcbwindow,     // 目标窗口
-                        window->xcbgc,         // 图形上下文
-                        0, 0,           // 源坐标 (x, y)
-                        0, 0,           // 目标坐标 (x, y)
-                        buf->width,          // 宽度
-                        buf->height          // 高度
-                    );
+             XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
+                    0, 0, 0, 0, 0,0, buf->width, buf->height);
         }
         window->last_layer_buffer = buf;
         window->lastLayer++;
@@ -1091,32 +1034,61 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         //     // With no viewporter the scale is guaranteed to be integer
         //     wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
         // }
-        // switch (fb_layer->transform) {
-        //     case HWC_TRANSFORM_FLIP_H:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
-        //         break;
-        //     case HWC_TRANSFORM_FLIP_V:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED);
-        //         break;
-        //     case HWC_TRANSFORM_ROT_90:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_90);
-        //         break;
-        //     case HWC_TRANSFORM_ROT_180:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_180);
-        //         break;
-        //     case HWC_TRANSFORM_ROT_270:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_270);
-        //         break;
-        //     case HWC_TRANSFORM_FLIP_H_ROT_90:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_270);
-        //         break;
-        //     case HWC_TRANSFORM_FLIP_V_ROT_90:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_90);
-        //         break;
-        //     default:
-        //         wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_NORMAL);
-        //         break;
-        // }
+        switch (fb_layer->transform) {
+            case HWC_TRANSFORM_FLIP_H:
+                XTransform transform;
+                transform.matrix[0][0] = XDoubleToFixed(-1.0); // scale x by -1
+                transform.matrix[0][1] = XDoubleToFixed(0.0);
+                transform.matrix[0][2] = XDoubleToFixed(buf->width);
+                transform.matrix[1][0] = XDoubleToFixed(0.0);
+                transform.matrix[1][1] = XDoubleToFixed(1.0);
+                transform.matrix[1][2] = XDoubleToFixed(0.0);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_FLIP_V:
+                XTransform transform;
+                transform.matrix[0][0] = XDoubleToFixed(1.0);
+                transform.matrix[0][1] = XDoubleToFixed(0.0);
+                transform.matrix[0][2] = XDoubleToFixed(0.0);
+                transform.matrix[1][0] = XDoubleToFixed(0.0);
+                transform.matrix[1][1] = XDoubleToFixed(-1.0); // scale y by -1
+                transform.matrix[1][2] = XDoubleToFixed(buf->height);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_ROT_90:
+                XTransform transform;
+                transform.matrix[0][0] = XDoubleToFixed(0.0);
+                transform.matrix[0][1] = XDoubleToFixed(-1.0);
+                transform.matrix[0][2] = XDoubleToFixed(buf->height);
+                transform.matrix[1][0] = XDoubleToFixed(1.0);
+                transform.matrix[1][1] = XDoubleToFixed(0.0);
+                transform.matrix[1][2] = XDoubleToFixed(0.0);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_ROT_180:
+
+                break;
+            case HWC_TRANSFORM_ROT_270:
+                break;
+            case HWC_TRANSFORM_FLIP_H_ROT_90:
+                // wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_270);
+                break;
+            case HWC_TRANSFORM_FLIP_V_ROT_90:
+                // wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_90);
+                break;
+            default:
+                // wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_NORMAL);
+                break;
+        }
 
         // struct wp_presentation *pres = window->display->presentation;
         // if (pres) {

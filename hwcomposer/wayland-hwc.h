@@ -116,6 +116,7 @@ struct display {
     Display * x11display;
     xcb_connection_t *xcbconnection;
     xcb_screen_t *xcbscreen;
+    XRenderPictFormat *  argb_format;
     struct wl_registry *registry;
     struct wl_compositor *compositor;
     struct wl_subcompositor *subcompositor;
@@ -143,6 +144,7 @@ struct display {
     struct zwp_pointer_gesture_pinch_v1 *pointer_gestures_pinch;
     int gtype;
     double scale;
+ 
 
     int input_fd[INPUT_TOTAL];
     int ptrPrvX;
@@ -202,6 +204,7 @@ struct buffer {
     struct wl_buffer *buffer;
     struct wp_presentation_feedback *feedback;
     xcb_pixmap_t xcbpixmap;
+    Picture xpicture;
     buffer_handle_t handle;
     int width;
     int height;
@@ -272,11 +275,8 @@ struct window {
     struct display *display;
     xcb_window_t xcbwindow;
     xcb_gcontext_t xcbgc;
-    xcb_pixmap_t xcbpixmap;
+    Picture xpicture;
     int dri3_fd;
-    std::map<size_t, xcb_window_t> xcbwindows;
-    std::map<size_t, int> dri3_fds;
-    std::map<size_t, xcb_gcontext_t> xcbgcs;
     struct wl_surface *surface;
     struct wp_viewport *viewport;
     struct wl_shell_surface *shell_surface;

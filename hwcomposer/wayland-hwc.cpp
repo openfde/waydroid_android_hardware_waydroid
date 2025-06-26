@@ -90,6 +90,10 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         xcb_free_pixmap(display->xcbconnection, buf->xcbpixmap);
         buf->xcbpixmap = 0;
     }
+    if (buf->xpicture) {
+        XRenderFreePicture(display->x11display, buf->xpicture);
+        buf->xpicture = 0;
+    }
     // wl_buffer_destroy(buf->buffer);
     // if (buf->isShm)
     //     munmap(buf->shm_data, buf->size);
@@ -518,6 +522,10 @@ destroy_window(struct window *window, bool keep)
     if (window->dri3_fd > 0) {
         close(window->dri3_fd);
         window->dri3_fd = -1;
+    }
+    if (window->xpicture) {
+        XRenderFreePicture(window->display->x11display, window->xpicture);
+        window->xpicture = 0;
     }
     xcb_flush(window->display->xcbconnection);
 
@@ -1215,8 +1223,9 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
                     XCB_WINDOW_CLASS_INPUT_OUTPUT,
                     display->visualid,
                     value_mask, value_list);
-
-
+    XRenderPictureAttributes pa;
+    pa.repeat = False;
+    window->xpicture = XRenderCreatePicture(display->x11display, window->xcbwindow,display->argb_format, CPRepeat, &pa);
     window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
     remove_title(display->xcbconnection, window->xcbwindow);
@@ -1400,6 +1409,8 @@ create_display(const char *gralloc)
 	    ALOGE("can't find argb visualid");
 	    return NULL;
     }
+
+    display->argb_format = XRenderFindStandardFormat(display->x11display, PictStandardARGB32);
 
 
     pthread_t event_thread;
