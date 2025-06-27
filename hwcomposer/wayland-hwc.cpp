@@ -613,6 +613,33 @@ ensure_pipe(struct display* display, int input_type)
     event[n].code = code_;                         \
     event[n].value = value_;                       \
     n++;
+static void
+send_key_event(display *data, uint32_t key, wl_keyboard_key_state state)
+{
+    struct display* display = (struct display*)data;
+    struct input_event event[1];
+    struct timespec rt;
+    unsigned int res, n = 0;
+
+    if (key >= display->keysDown.size()) {
+        ALOGE("Invalid key: %u", key);
+        return;
+    }
+
+    if (ensure_pipe(display, INPUT_KEYBOARD))
+        return;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+        ALOGE("%s:%d error in touch clock_gettime: %s",
+              __FILE__, __LINE__, strerror(errno));
+    }
+    ADD_EVENT(EV_KEY, key, state);
+
+    res = write(display->input_fd[INPUT_KEYBOARD], &event, sizeof(event));
+    if (res < sizeof(event))
+        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+    display->keysDown[(uint8_t)key] = state;
+}
 
 static void pointer_handle_button_to_touch_down(struct display *display) {
     struct input_event event[6];
@@ -869,17 +896,27 @@ void register_button_release_callback(ButtonReleaseCallback cb) { dispatcher.but
 void register_motion_notify_callback(MotionNotifyCallback cb) { dispatcher.motion_notify_cb = cb; }
 
 void on_key_press(void *data, xcb_key_press_event_t *event) {
-    struct display* display = (struct display*)data;
-
     ALOGE("x11 keyboard press: keycode=%u\n", event->detail);
-    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+    uint32_t key = event->detail - 8;
+    if (event->detail == KEY_POWER)
+        return;
+    struct display* display = (struct display*)data;
+    if (key == KEY_LEFTCTRL || key == KEY_RIGHTCTRL){
+        display->ctrl_key_pressed = 1;
+    }
+    send_key_event((struct display*)data, key, (wl_keyboard_key_state)1);
 }
 
 void on_key_release(void *data, xcb_key_release_event_t *event) {
-    struct display* display = (struct display*)data;
-    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
-
     ALOGE("x11 keyboard release: keycode=%u\n", event->detail);
+    uint32_t key = event->detail - 8;
+    if (key == KEY_POWER)
+        return;
+    struct display* display = (struct display*)data;
+    if (key == KEY_LEFTCTRL || key == KEY_RIGHTCTRL){
+        display->ctrl_key_pressed = 0;
+    }
+    send_key_event((struct display*)data, key, (wl_keyboard_key_state)0);
 }
 
 void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
@@ -1415,6 +1452,10 @@ create_display(const char *gralloc)
         d->input_fd[INPUT_TOUCH] = -1;
         mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
         chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
+
+        d->input_fd[INPUT_KEYBOARD] = -1;
+        mkfifo(INPUT_PIPE_NAME[INPUT_KEYBOARD], S_IRWXO | S_IRWXG | S_IRWXU);
+        chown(INPUT_PIPE_NAME[INPUT_KEYBOARD], 1000, 1000);
      register_key_press_callback(on_key_press);
     register_key_release_callback(on_key_release);
     register_button_press_callback(on_button_press);
