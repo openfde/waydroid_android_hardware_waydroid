@@ -919,12 +919,213 @@ void on_key_release(void *data, xcb_key_release_event_t *event) {
     send_key_event((struct display*)data, key, (wl_keyboard_key_state)0);
 }
 
+static void handle_pinch_update(void *data, uint32_t time, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t scale, wl_fixed_t rotation)
+{
+    (void) data;
+    (void) time;
+    (void) dx;
+    (void) dy;
+    (void) scale;
+    (void) rotation;
+    struct display* display = (struct display*)data;
+    struct input_event event[12];
+    struct timespec rt;
+    int x, y;
+    unsigned int res, n = 0;
+
+    if (ensure_pipe(display, INPUT_TOUCH))
+        return;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+       ALOGE("%s:%d error in touch clock_gettime: %s",
+            __FILE__, __LINE__, strerror(errno));
+    }
+    x = wl_fixed_to_int(dx) + display->ptrPrvX;
+    y = wl_fixed_to_int(dy) + display->ptrPrvY;
+
+
+    double iscale = wl_fixed_to_double(scale);
+    double irotation = 90;
+
+    int x0 = x - (240.0 * iscale * cos(irotation));
+    int y0 = y - (240.0 * iscale * sin(irotation));
+    int x1 = x + (240.0 * iscale * cos(irotation));
+    int y1 = y + (240.0 * iscale * sin(irotation));
+
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 0);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 0);
+    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x0);
+    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y0);
+    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, 1);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, 1);
+    ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, x1);
+    ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, y1);
+    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+
+    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
+
+    if (res < sizeof(event))
+        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+
+}
+
+
+static void
+pointer_axis_to_touch(struct display *display, int move, bool verticalScroll)
+{
+    struct input_event event[6];
+    struct timespec rt;
+    unsigned int res, n = 0;
+
+    if (ensure_pipe(display, INPUT_TOUCH))
+        return;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+        ALOGE("%s:%d error in touch clock_gettime: %s",
+              __FILE__, __LINE__, strerror(errno));
+    }
+
+    int64_t nanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
+    if(verticalScroll){
+        display->axisY += move;
+    }else{
+        display->axisX += move;
+    }
+
+    // if ((nanoSeconds - display->lastAxisEventNanoSeconds) < 20 * 1000 * 1000) {
+    //     return;
+    // }
+
+    if (display->lastAxisEventNanoSeconds == 0) {
+        display->axisY = display->ptrPrvY;
+        display->axisX = display->ptrPrvX;
+        ADD_EVENT(EV_ABS, ABS_MT_SLOT, AXIS_TOUCH_SLOT_ID);
+        ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, AXIS_TOUCH_TRACKING_ID);
+        if(verticalScroll){
+            ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->ptrPrvX);
+            ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axisY);
+        }else{
+            ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axisX);
+            ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->ptrPrvY);
+        }
+        ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
+        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+        res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
+        if (res < sizeof(event)) {
+            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+            return;
+        }
+
+        n = 0;
+        display->axisY += move;
+    }
+
+    display->lastAxisEventNanoSeconds = nanoSeconds;
+    ADD_EVENT(EV_ABS, ABS_MT_SLOT, AXIS_TOUCH_SLOT_ID);
+    ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, AXIS_TOUCH_TRACKING_ID);
+    if(verticalScroll){
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->ptrPrvX);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->axisY);
+    }else{
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_X, display->axisX);
+        ADD_EVENT(EV_ABS, ABS_MT_POSITION_Y, display->ptrPrvY);
+    }
+    ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
+    ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
+    if (res < sizeof(event))
+        ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+}
+
+
+static void
+x11_pointer_handle_axis(void *data,  uint32_t axis, int value)
+{
+    struct display* display = (struct display*)data;
+    int touchMove = display->reverseScroll ? wl_fixed_to_int(value) : -wl_fixed_to_int(value);
+    if (display->wheelEvtIsDiscrete) {
+        touchMove *= 6;
+    }
+
+    struct input_event event[2];
+    struct timespec rt;
+    unsigned int move, res, n = 0;
+    double fVal = wl_fixed_to_double(value) / 10.0f;
+    double step = 1.0f;
+
+    if (ensure_pipe(display, INPUT_POINTER))
+        return;
+
+    if (!display->reverseScroll) {
+        fVal = -fVal;
+    }
+
+    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+        display->wheelAccumulatorY += fVal;
+        if (std::abs(display->wheelAccumulatorY) < step)
+            return;
+        move = (int)(display->wheelAccumulatorY / step);
+        display->wheelAccumulatorY = display->wheelEvtIsDiscrete ? 0 :
+                                     std::fmod(display->wheelAccumulatorY, step);
+    } else {
+        display->wheelAccumulatorX += fVal;
+        if (std::abs(display->wheelAccumulatorX) < step)
+            return;
+        move = (int)(display->wheelAccumulatorX / step);
+        display->wheelAccumulatorX = display->wheelEvtIsDiscrete ? 0 :
+                                     std::fmod(display->wheelAccumulatorX, step);
+    }
+
+    if(property_get_bool("fde.click_as_touch", false)){
+        if(display->ctrl_key_pressed){
+            if(touchMove > 0){
+                display->gesture_scale += 15;
+            }else{
+                display->gesture_scale -= 15;
+                if(display->gesture_scale < 15){
+                    display->gesture_scale = 5;
+                }
+            }
+            if(display->lastAxisEventNanoSeconds != 0){
+                pointer_cancel_axis_to_touch(display, true, true);
+            }
+            handle_pinch_update(data,0,0,0,display->gesture_scale,0);
+            display->axis_simulation_two_finger_started = true;
+        }else{
+            if(display->axis_simulation_two_finger_started){
+                pointer_cancel_axis_to_two_finger_touch(display);
+            }
+            pointer_axis_to_touch(display, touchMove, axis == WL_POINTER_AXIS_VERTICAL_SCROLL);
+        }
+    }else{
+        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+            ALOGE("%s:%d error in touch clock_gettime: %s",
+                  __FILE__, __LINE__, strerror(errno));
+        }
+        ADD_EVENT(EV_REL, (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+              ? REL_WHEEL : REL_HWHEEL, move);
+        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+
+        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
+        if (res < sizeof(event))
+            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
+    }
+}
+
+
 void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
+    ALOGE("x11 mouse press: botton=%u, position=(%d, %d)\n",
+           xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
+    if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
+        ALOGE("on_button_press %d return", xcb_button_event->detail);
+        return;
+    }
     struct display* display = (struct display*)data;
     ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
 
-    ALOGE("x11 mouse press: botton=%u, position=(%d, %d)\n",
-           xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     pointer_cancel_axis_to_touch(display, false, true);
     if(display->axis_simulation_two_finger_started){
         pointer_cancel_axis_to_two_finger_touch(display);
@@ -976,6 +1177,14 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
 
     ALOGE("x11 mouse release: button=%u, position=(%d, %d)\n",
            xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
+    if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
+        ALOGE("on_button_release %d", xcb_button_event->detail);
+        uint32_t axis = 0;
+        int value = (xcb_button_event->detail == XCB_BUTTON_INDEX_4) ? 2560 : -2560;
+        display->wheelEvtIsDiscrete = true;
+        x11_pointer_handle_axis(data, axis, value);
+        return;
+    }
     pointer_cancel_axis_to_touch(display, false, true);
     if(display->axis_simulation_two_finger_started){
         pointer_cancel_axis_to_two_finger_touch(display);
