@@ -31,6 +31,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#include <gralloc_handle.h>
 
 #include <semaphore.h>
 #include <ui/GraphicBuffer.h>
@@ -133,3 +134,131 @@ void* egl_loop(void* data) {
     }
     return NULL;
 }
+
+
+
+void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle){
+      EGLint attribs[] = {
+        EGL_WIDTH, (EGLint)drm_handle->width,
+        EGL_HEIGHT, (EGLint)drm_handle->height,
+        EGL_LINUX_DRM_FOURCC_EXT,(EGLint) drm_handle->format,
+        EGL_DMA_BUF_PLANE0_FD_EXT, (EGLint)drm_handle->prime_fd,
+        EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+        EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)drm_handle->stride,
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (EGLint)(drm_handle->modifier & 0xFFFFFFFF),
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (EGLint)(drm_handle->modifier >> 32),
+        EGL_NONE
+    };
+
+    auto image = eglCreateImageKHR(display->egl_dpy, EGL_NO_CONTEXT,
+                                         EGL_NATIVE_BUFFER_ANDROID, NULL, attribs);
+    if (image == EGL_NO_IMAGE_KHR) {
+        ALOGE("Failed to create EGLImage from DMA-BUF: 0x%x", eglGetError());
+    }
+
+    // Create input texture from the native buffer
+    GLuint input_texture;
+    glGenTextures(1, &input_texture);
+    glBindTexture(GL_TEXTURE_2D, input_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
+
+    // Create output framebuffer and texture
+    GLuint output_framebuffer, output_texture;
+    glGenFramebuffers(1, &output_framebuffer);
+    glGenTextures(1, &output_texture);
+
+    glBindTexture(GL_TEXTURE_2D, output_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, drm_handle->width, drm_handle->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, output_framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture, 0);
+
+    // Simple vertex shader
+    const char* vertex_shader_source = R"(
+        attribute vec2 position;
+        attribute vec2 texcoord;
+        varying vec2 v_texcoord;
+        void main() {
+            gl_Position = vec4(position, 0.0, 1.0);
+            v_texcoord = texcoord;
+        }
+    )";
+
+    // Fragment shader for ARGB to ABGR conversion (swap R and B channels)
+    const char* fragment_shader_source = R"(
+        precision mediump float;
+        uniform sampler2D u_texture;
+        varying vec2 v_texcoord;
+        void main() {
+            vec4 color = texture2D(u_texture, v_texcoord);
+            gl_FragColor = vec4(color.b, color.g, color.r, color.a);
+        }
+    )";
+
+    // Compile and use shader program
+    GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
+    glCompileShader(vertex_shader);
+
+    GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
+    glCompileShader(fragment_shader);
+
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertex_shader);
+    glAttachShader(program, fragment_shader);
+    glLinkProgram(program);
+    glUseProgram(program);
+
+    // Set up quad vertices
+    float vertices[] = {
+        -1.0f, -1.0f, 0.0f, 1.0f,
+         1.0f, -1.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, 0.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 0.0f
+    };
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    GLint position_attr = glGetAttribLocation(program, "position");
+    GLint texcoord_attr = glGetAttribLocation(program, "texcoord");
+
+    glEnableVertexAttribArray(position_attr);
+    glVertexAttribPointer(position_attr, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(texcoord_attr);
+    glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+    // Bind input texture and render
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, input_texture);
+    glUniform1i(glGetUniformLocation(program, "u_texture"), 0);
+
+    glViewport(0, 0, drm_handle->width, drm_handle->height);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // Copy result back to original buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, output_framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, input_texture, 0);
+    glBindTexture(GL_TEXTURE_2D, input_texture);
+    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, drm_handle->width, drm_handle->height, 0);
+
+
+    // Cleanup
+    glDeleteBuffers(1, &vbo);
+    glDeleteProgram(program);
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+    glDeleteTextures(1, &output_texture);
+    glDeleteFramebuffers(1, &output_framebuffer);
+    glDeleteTextures(1, &input_texture);
+    eglDestroyImageKHR(display->egl_dpy, image);
+}
+

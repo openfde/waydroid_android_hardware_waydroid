@@ -509,13 +509,7 @@ struct wl_shell_surface_listener shell_surface_listener = {
 void
 destroy_window(struct window *window, bool keep)
 {   
-    // 清除X11窗口和相关缓存
-    if (window->xcbwindow) {
-        xcb_unmap_window(window->display->xcbconnection, window->xcbwindow);
-        xcb_destroy_window(window->display->xcbconnection, window->xcbwindow);
-        window->xcbwindow = 0;
-    }
-    if (window->backxpicture) {
+   if (window->backxpicture) {
         XRenderFreePicture(window->display->x11display, window->backxpicture);
         window->backxpicture = 0;
     }
@@ -523,6 +517,7 @@ destroy_window(struct window *window, bool keep)
         XFreePixmap(window->display->x11display, window->backpixmap);
         window->backpixmap = 0;
     }
+
     if (window->xcbgc) {
         xcb_free_gc(window->display->xcbconnection, window->xcbgc);
         window->xcbgc = 0;
@@ -534,6 +529,11 @@ destroy_window(struct window *window, bool keep)
     if (window->xpicture) {
         XRenderFreePicture(window->display->x11display, window->xpicture);
         window->xpicture = 0;
+    }
+     if (window->xcbwindow) {
+        xcb_unmap_window(window->display->xcbconnection, window->xcbwindow);
+        xcb_destroy_window(window->display->xcbconnection, window->xcbwindow);
+        window->xcbwindow = 0;
     }
     xcb_flush(window->display->xcbconnection);
 
@@ -1277,6 +1277,9 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         return NULL;
     }
     window->backxpicture = XRenderCreatePicture(display->x11display, window->backpixmap,display->argb_format, CPRepeat, &pa);
+        // 用透明填充backpixmap
+    XRenderColor transparent_color = {0, 0, 0, 0};  // RGBA all zero for transparent
+    XRenderFillRectangle(display->x11display, PictOpSrc, window->backxpicture, &transparent_color, 0, 0, display->width, display->height);
 
     window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);

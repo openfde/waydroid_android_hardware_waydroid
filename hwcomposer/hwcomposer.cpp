@@ -312,7 +312,12 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 int x11_fd = dup(drm_handle->prime_fd);
                 if (x11_fd >= 0) {
                     fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
-                }
+                }else {
+			return NULL;
+		}
+		//pdev->display->egl_work_queue.push_back(std::bind(egl_convert_argb_abgr, pdev->display,drm_handle));
+		//sem_post(&pdev->display->egl_go);
+		//sem_wait(&pdev->display->egl_done);
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
                 XRenderPictureAttributes pa;
@@ -323,6 +328,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 if (pixmap_error) {
                     ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
                     free(pixmap_error);
+		    return NULL;
                 }
                 ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
                 buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
@@ -1245,9 +1251,11 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     }
                 }
                 // Clear the window's back xpicture
-                XRenderColor clear_color = {0, 0, 0, 0}; // Transparent black
-                XRenderFillRectangle(pdev->display->x11display, PictOpClear, it->second->backxpicture, &clear_color, 
-                                     0, 0, pdev->display->width, pdev->display->height);
+		if (it->second->backxpicture) {
+			XRenderColor clear_color = {0, 0, 0, 0}; // Transparent black
+			XRenderFillRectangle(pdev->display->x11display, PictOpClear, it->second->backxpicture, &clear_color, 
+					    0, 0, pdev->display->width, pdev->display->height);
+		}
             }
         }
         pdev->display->geo_changed = false;
