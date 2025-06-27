@@ -324,13 +324,8 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
                     free(pixmap_error);
                 }
-                if (pdev->use_subsurface ) {
-                    ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
-                    buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
-                }else {
-                    buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
-                }
-            
+                ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
+                buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
                 close(x11_fd);
             }
 		} else {
@@ -444,7 +439,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 
     // Set up transformation matrix for scaling if needed
     if (src_width != dst_width || src_height != dst_height) {
-        XTransform scale_transform;
+     /*   XTransform scale_transform;
         double scale_x = (double)src_width / dst_width;
         double scale_y = (double)src_height / dst_height;
         
@@ -459,23 +454,12 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
         scale_transform.matrix[2][2] = XDoubleToFixed(1.0);
         
         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &scale_transform);
+	*/
     }
 
-    // Composite the cropped and scaled region
-    XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
-                    src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
-    // XRenderFillRectangle(pdev->display->x11display, PictOpOver, buf->xpicture, &clear_color,values.x,values.y,buf->width,buf->height);
-    // XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
-    //                 0, 0, 0, 0, values.x, values.y, buf->width, buf->height);
-    //  if (window->xcbwindows.find(window->lastLayer) != window->xcbwindows.end()) {
-    //      xcb_window_t xcbwindow = window->xcbwindows[window->lastLayer];
-    //      xcb_configure_window(pdev->display->xcbconnection, xcbwindow, mask, (uint32_t*)&values);
-    //  }
+	XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
+                   src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
 
-    /*pdev->display->layers[window->xcbwindows[window->lastLayer]] = {
-        .x = layer->displayFrame.left,
-        .y = layer->displayFrame.top }; 
-	*/
     ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
     return 0;
 }
@@ -1042,12 +1026,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         // }
       
           if (pdev->use_subsurface ) {
-            //    XRenderColor clear_color = {0, 0, 0, 0}; // 完全透明
-            XRenderFillRectangle(pdev->display->x11display, PictOpClear, window->xpicture, &clear_color, 
-                                     0, 0, pdev->display->width, pdev->display->height);
             adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
-            XFlush(pdev->display->x11display);
-            ALOGE("gy copy_area width %d, height %d", buf->width, buf->height);
         }else {
              XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
                     0, 0, 0, 0, 0,0, buf->width, buf->height);
@@ -1064,95 +1043,95 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         //     // With no viewporter the scale is guaranteed to be integer
         //     wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
         // }
-	    XTransform transform;
-        switch (fb_layer->transform) {
-            case HWC_TRANSFORM_FLIP_H:
-                transform.matrix[0][0] = XDoubleToFixed(-1.0); // scale x by -1
-                transform.matrix[0][1] = XDoubleToFixed(0.0);
-                transform.matrix[0][2] = XDoubleToFixed(buf->width);
-                transform.matrix[1][0] = XDoubleToFixed(0.0);
-                transform.matrix[1][1] = XDoubleToFixed(1.0);
-                transform.matrix[1][2] = XDoubleToFixed(0.0);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            case HWC_TRANSFORM_FLIP_V:
-                transform.matrix[0][0] = XDoubleToFixed(1.0);
-                transform.matrix[0][1] = XDoubleToFixed(0.0);
-                transform.matrix[0][2] = XDoubleToFixed(0.0);
-                transform.matrix[1][0] = XDoubleToFixed(0.0);
-                transform.matrix[1][1] = XDoubleToFixed(-1.0); // scale y by -1
-                transform.matrix[1][2] = XDoubleToFixed(buf->height);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            case HWC_TRANSFORM_ROT_90:
-                transform.matrix[0][0] = XDoubleToFixed(0.0);
-                transform.matrix[0][1] = XDoubleToFixed(-1.0);
-                transform.matrix[0][2] = XDoubleToFixed(buf->height);
-                transform.matrix[1][0] = XDoubleToFixed(1.0);
-                transform.matrix[1][1] = XDoubleToFixed(0.0);
-                transform.matrix[1][2] = XDoubleToFixed(0.0);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            case HWC_TRANSFORM_ROT_180:
-                transform.matrix[0][0] = XDoubleToFixed(-1.0);
-                transform.matrix[0][1] = XDoubleToFixed(0.0);
-                transform.matrix[0][2] = XDoubleToFixed(buf->width);
-                transform.matrix[1][0] = XDoubleToFixed(0.0);
-                transform.matrix[1][1] = XDoubleToFixed(-1.0);
-                transform.matrix[1][2] = XDoubleToFixed(buf->height);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            case HWC_TRANSFORM_ROT_270:
-                transform.matrix[0][0] = XDoubleToFixed(0.0);
-                transform.matrix[0][1] = XDoubleToFixed(1.0);
-                transform.matrix[0][2] = XDoubleToFixed(0.0);
-                transform.matrix[1][0] = XDoubleToFixed(-1.0);
-                transform.matrix[1][1] = XDoubleToFixed(0.0);
-                transform.matrix[1][2] = XDoubleToFixed(buf->width);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            case HWC_TRANSFORM_FLIP_H_ROT_90:
-                transform.matrix[0][0] = XDoubleToFixed(0.0);
-                transform.matrix[0][1] = XDoubleToFixed(1.0);
-                transform.matrix[0][2] = XDoubleToFixed(0.0);
-                transform.matrix[1][0] = XDoubleToFixed(1.0);
-                transform.matrix[1][1] = XDoubleToFixed(0.0);
-                transform.matrix[1][2] = XDoubleToFixed(0.0);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            case HWC_TRANSFORM_FLIP_V_ROT_90:
-                transform.matrix[0][0] = XDoubleToFixed(0.0);
-                transform.matrix[0][1] = XDoubleToFixed(-1.0);
-                transform.matrix[0][2] = XDoubleToFixed(buf->height);
-                transform.matrix[1][0] = XDoubleToFixed(-1.0);
-                transform.matrix[1][1] = XDoubleToFixed(0.0);
-                transform.matrix[1][2] = XDoubleToFixed(buf->width);
-                transform.matrix[2][0] = XDoubleToFixed(0.0);
-                transform.matrix[2][1] = XDoubleToFixed(0.0);
-                transform.matrix[2][2] = XDoubleToFixed(1.0);
-                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                break;
-            default:
-                break;
-        }
+	    // XTransform transform;
+        // switch (fb_layer->transform) {
+        //     case HWC_TRANSFORM_FLIP_H:
+        //         transform.matrix[0][0] = XDoubleToFixed(-1.0); // scale x by -1
+        //         transform.matrix[0][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(buf->width);
+        //         transform.matrix[1][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(1.0);
+        //         transform.matrix[1][2] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     case HWC_TRANSFORM_FLIP_V:
+        //         transform.matrix[0][0] = XDoubleToFixed(1.0);
+        //         transform.matrix[0][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(-1.0); // scale y by -1
+        //         transform.matrix[1][2] = XDoubleToFixed(buf->height);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     case HWC_TRANSFORM_ROT_90:
+        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][1] = XDoubleToFixed(-1.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(buf->height);
+        //         transform.matrix[1][0] = XDoubleToFixed(1.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][2] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     case HWC_TRANSFORM_ROT_180:
+        //         transform.matrix[0][0] = XDoubleToFixed(-1.0);
+        //         transform.matrix[0][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(buf->width);
+        //         transform.matrix[1][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(-1.0);
+        //         transform.matrix[1][2] = XDoubleToFixed(buf->height);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     case HWC_TRANSFORM_ROT_270:
+        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][1] = XDoubleToFixed(1.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][0] = XDoubleToFixed(-1.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][2] = XDoubleToFixed(buf->width);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     case HWC_TRANSFORM_FLIP_H_ROT_90:
+        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][1] = XDoubleToFixed(1.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][0] = XDoubleToFixed(1.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][2] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     case HWC_TRANSFORM_FLIP_V_ROT_90:
+        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[0][1] = XDoubleToFixed(-1.0);
+        //         transform.matrix[0][2] = XDoubleToFixed(buf->height);
+        //         transform.matrix[1][0] = XDoubleToFixed(-1.0);
+        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[1][2] = XDoubleToFixed(buf->width);
+        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
+        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
+        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+        //         break;
+        //     default:
+        //         break;
+        // }
 
         // struct wp_presentation *pres = window->display->presentation;
         // if (pres) {
@@ -1179,6 +1158,14 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         close(fb_layer->acquireFenceFd);
     }
     // Layers order is changed from SF so we rearrange wayland surfaces
+     if (pdev->use_subsurface)
+         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
+             if (it->second){
+	     XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
+		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
+                 //wl_surface_commit(it->second->surface);
+	     }
+    XFlush(pdev->display->x11display);
     if (pdev->display->geo_changed) {
         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
             if (it->second) {
@@ -1192,9 +1179,9 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         // wl_surface_commit(it->second->surfaces[l]);
                     }
                 }
-                // Clear the window's xpicture
+                // Clear the window's back xpicture
                 XRenderColor clear_color = {0, 0, 0, 0}; // Transparent black
-                XRenderFillRectangle(pdev->display->x11display, PictOpClear, it->second->xpicture, &clear_color, 
+                XRenderFillRectangle(pdev->display->x11display, PictOpClear, it->second->backxpicture, &clear_color, 
                                      0, 0, pdev->display->width, pdev->display->height);
             }
         }
@@ -1214,11 +1201,11 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
     //     }
     // }
 
-    // if (pdev->use_subsurface)
-    //     for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
-    //         if (it->second)
-    //             wl_surface_commit(it->second->surface);
-    xcb_flush(pdev->display->xcbconnection); // 确保请求发送
+     //if (pdev->use_subsurface)
+      //   for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
+       //      if (it->second)
+                 //wl_surface_commit(it->second->surface);
+     xcb_flush(pdev->display->xcbconnection); // 确保请求发送
     // wl_display_flush(pdev->display->display);
 
 sync:

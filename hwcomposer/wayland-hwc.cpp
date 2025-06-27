@@ -515,6 +515,14 @@ destroy_window(struct window *window, bool keep)
         xcb_destroy_window(window->display->xcbconnection, window->xcbwindow);
         window->xcbwindow = 0;
     }
+    if (window->backxpicture) {
+        XRenderFreePicture(window->display->x11display, window->backxpicture);
+        window->backxpicture = 0;
+    }
+    if (window->backpixmap) {
+        XFreePixmap(window->display->x11display, window->backpixmap);
+        window->backpixmap = 0;
+    }
     if (window->xcbgc) {
         xcb_free_gc(window->display->xcbconnection, window->xcbgc);
         window->xcbgc = 0;
@@ -1226,6 +1234,12 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     XRenderPictureAttributes pa;
     pa.repeat = False;
     window->xpicture = XRenderCreatePicture(display->x11display, window->xcbwindow,display->argb_format, CPRepeat, &pa);
+    window->backpixmap = XCreatePixmap(display->x11display, window->xcbwindow, display->width, display->height, 32);
+    if (window->backpixmap == None) {
+        return NULL;
+    }
+    window->backxpicture = XRenderCreatePicture(display->x11display, window->backpixmap,display->argb_format, CPRepeat, &pa);
+
     window->xcbgc = xcb_generate_id(display->xcbconnection);
     xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
     remove_title(display->xcbconnection, window->xcbwindow);

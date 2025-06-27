@@ -276,7 +276,10 @@ struct window {
     xcb_window_t xcbwindow;
     xcb_gcontext_t xcbgc;
     Picture xpicture;
+    Picture backxpicture;
+    Pixmap backpixmap;
     int dri3_fd;
+    
     struct wl_surface *surface;
     struct wp_viewport *viewport;
     struct wl_shell_surface *shell_surface;
