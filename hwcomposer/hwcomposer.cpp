@@ -633,6 +633,30 @@ static void* hwc_vsync_thread(void* data) {
 //     feedback_discarded
 // };
 
+void get_input_shape(xcb_connection_t *conn, xcb_window_t window) {
+    if (!xcb_get_extension_data(conn, &xcb_shape_id)->present) {
+        ALOGE("Shape extension not available\n");
+        return;
+    }
+
+    xcb_shape_get_rectangles_reply_t *reply = xcb_shape_get_rectangles_reply(
+        conn, xcb_shape_get_rectangles(conn, window, XCB_SHAPE_SK_INPUT), NULL);
+    if (!reply) {
+        ALOGE("Failed to query input shape\n");
+        return;
+    }
+
+    int num_rects = xcb_shape_get_rectangles_rectangles_length(reply);
+    xcb_rectangle_t *rects = xcb_shape_get_rectangles_rectangles(reply);
+    ALOGE("hwc_set Current input shape (%d rectangles):\n", num_rects);
+    for (int i = 0; i < num_rects; i++) {
+        ALOGE("  hwc_set rectangle %d: x=%d, y=%d, width=%u, height=%u\n",
+               i, rects[i].x, rects[i].y, rects[i].width, rects[i].height);
+    }
+
+    free(reply);
+}
+
 static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                    hwc_display_contents_1_t** displays) {
     char property[PROPERTY_VALUE_MAX];
@@ -1157,6 +1181,47 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         }
         close(fb_layer->acquireFenceFd);
     }
+
+    //Merge subwindow input rectangle
+    for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
+        int size = 0;
+        for (size_t l = 0; l < contents->numHwLayers; l++) {
+            size_t layer = l;
+            std::string layer_name = pdev->display->layer_names[layer];
+            if (layer_name.substr(0, 4) == "TID:") {
+                hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
+                std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
+                if(layer_tid == it->first && !(fb_layer->flags & HWC_SKIP_LAYER)){
+                    size++;  
+                }
+            }
+        }
+        ALOGD("hwc_set layers size: %d", size);
+        if(size == 0){
+            continue;
+        }
+        xcb_rectangle_t rects[size];
+        int i = 0;
+        for (size_t l = 0; l < contents->numHwLayers; l++) {
+            size_t layer = l;
+            std::string layer_name = pdev->display->layer_names[layer];
+            hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
+            ALOGE("hwc_set layer_name: %s", layer_name.c_str()); 
+            if (layer_name.substr(0, 4) == "TID:") {
+                std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
+                uint16_t w = fb_layer->displayFrame.right - fb_layer->displayFrame.left;
+                uint16_t h = fb_layer->displayFrame.bottom - fb_layer->displayFrame.top;
+                hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
+                if(layer_tid == it->first && !(fb_layer->flags & HWC_SKIP_LAYER)){
+                    ALOGE("hwc_set layer_tid: %s, rect i: %d, left: %d, top: %d, width: %u, height: %u", layer_tid.c_str(), i, fb_layer->displayFrame.left, fb_layer->displayFrame.top, w, h);
+                    rects[i++] = {static_cast<int16_t>(fb_layer->displayFrame.left), static_cast<int16_t>(fb_layer->displayFrame.top), w, h};
+                }
+            }
+        }
+        xcb_shape_rectangles(pdev->display->xcbconnection, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_INPUT,XCB_CLIP_ORDERING_UNSORTED, it->second->xcbwindow, 0, 0,size, rects);
+        get_input_shape(pdev->display->xcbconnection, it->second->xcbwindow);
+    }    
+    
     // Layers order is changed from SF so we rearrange wayland surfaces
      if (pdev->use_subsurface)
          for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)

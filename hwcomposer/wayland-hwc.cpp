@@ -1218,7 +1218,8 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     uint32_t value_list[] = {
         0,  // 设置不透明的黑色背景，避免窗口透明
         0,
-        XCB_EVENT_MASK_EXPOSURE,
+        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION,
         display->colormap
     };
 

@@ -68,6 +68,32 @@ cc_prebuilt_library_shared {
     visibility: ["//hardware/waydroid/hwcomposer"],
 }
 cc_prebuilt_library_shared {
+    name: "libxcb-shape",
+    arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
+        arm64: {
+            srcs: ["lib/libxcb-shape.so"],
+        },
+    },
+
+    shared_libs: [
+        "libxcb",
+        "libXau",
+        "libXdmcp",
+    ],
+    proprietary : true,
+    vendor: false,
+    visibility: ["//hardware/waydroid/hwcomposer"],
+}
+cc_prebuilt_library_shared {
     name: "libX11",
     arch: {
         arm: {
@@ -228,6 +254,7 @@ cc_library_shared {
         "libXrender",
         "libxcb",
         "libxcb-dri3",
+        "libxcb-shape",
         "vendor.waydroid.display@1.0",
         "vendor.waydroid.display@1.1",
         "vendor.waydroid.task@1.0",
