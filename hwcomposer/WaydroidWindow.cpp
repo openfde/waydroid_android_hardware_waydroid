@@ -23,6 +23,8 @@
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "relative-pointer-unstable-v1-client-protocol.h"
 #include "idle-inhibit-unstable-v1-client-protocol.h"
+#include <xcb/xcb.h>
+#include <xcb/xcb_icccm.h>
 
 namespace vendor::waydroid::window::implementation {
 
@@ -52,27 +54,27 @@ Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
     for (auto it = mDisplay->windows.begin(); it != mDisplay->windows.end(); it++) {
         struct window* window = it->second;
         if (window && window->appID == packageName) {
-           xcb_intern_atom_cookie_t wm_change_state_cookie = xcb_intern_atom(conn, 0, strlen("WM_CHANGE_STATE"), "WM_CHANGE_STATE");
-            xcb_intern_atom_reply_t *wm_change_state_atom = xcb_intern_atom_reply(conn, wm_change_state_cookie, NULL);
+           xcb_intern_atom_cookie_t wm_change_state_cookie = xcb_intern_atom(mDisplay->xcbconnection, 0, strlen("WM_CHANGE_STATE"), "WM_CHANGE_STATE");
+            xcb_intern_atom_reply_t *wm_change_state_atom = xcb_intern_atom_reply(mDisplay->xcbconnection, wm_change_state_cookie, NULL);
 
             if (wm_change_state_atom) {
                 xcb_client_message_event_t ev;
                 ev.response_type = XCB_CLIENT_MESSAGE;
                 ev.format = 32;
-                ev.window = win;
+                ev.window = window->xcbwindow;
                 ev.type = wm_change_state_atom->atom;
                 ev.data.data32[0] = XCB_ICCCM_WM_STATE_ICONIC;
                 ev.data.data32[1] = 0;
                 ev.data.data32[2] = 0;
                 ev.data.data32[3] = 0;
                 ev.data.data32[4] = 0;
-                xcb_send_event(conn, 0, screen->root,
+                xcb_send_event(mDisplay->xcbconnection, 0, mDisplay->xcbscreen->root,
                     XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
                     (const char *)&ev);
                 free(wm_change_state_atom);
             }
 
-            xcb_flush(conn);
+            xcb_flush(mDisplay->xcbconnection);
             return true;
         }
     }
