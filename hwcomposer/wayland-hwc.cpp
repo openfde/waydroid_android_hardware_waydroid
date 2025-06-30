@@ -1117,7 +1117,7 @@ x11_pointer_handle_axis(void *data,  uint32_t axis, int value)
 
 
 void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
-    ALOGE("x11 mouse press: botton=%u, position=(%d, %d)\n",
+    ALOGE("on_button_press: botton=%u, position=(%d, %d)\n",
            xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
         ALOGE("on_button_press %d return", xcb_button_event->detail);
@@ -1143,8 +1143,8 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
         if (ensure_pipe(display, INPUT_POINTER))
             return;
 
-        if (!display->pointer_surface)
-            return;
+        //if (!display->pointer_surface)
+        //    return;
 
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
@@ -1152,6 +1152,7 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
         }
         if(xcb_button_event->detail == 1){
             display->isMouseLeftDown = true;
+            ALOGE("on_button_press isMouseLeftDown set true");
         }
 
         uint32_t button = 0;
@@ -1172,11 +1173,10 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
 }
 
 void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event) {
+    ALOGE("on_button_release: button=%u, position=(%d, %d)\n",
+               xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     struct display* display = (struct display*)data;
     ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
-
-    ALOGE("x11 mouse release: button=%u, position=(%d, %d)\n",
-           xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
         ALOGE("on_button_release %d", xcb_button_event->detail);
         uint32_t axis = 0;
@@ -1202,8 +1202,8 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
         if (ensure_pipe(display, INPUT_POINTER))
             return;
 
-        if (!display->pointer_surface)
-            return;
+        //if (!display->pointer_surface)
+        //    return;
 
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
@@ -1211,6 +1211,7 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
         }
         if(xcb_button_event->detail == 1){
             display->isMouseLeftDown = false;
+            ALOGE("on_button_release isMouseLeftDown set false");
         }
 
         uint32_t button = 0;
@@ -1242,7 +1243,6 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
     int x, y;
 
     if (ensure_pipe(display, INPUT_POINTER)){
-        ALOGE("on_motion_notify return 1------>>>>>>");
         return;
     }
 
@@ -1316,7 +1316,7 @@ void *event_loop_thread(void *arg) {
 
         int ret = select(xcb_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (ret < 0) {
-            ALOGE("select error");
+            ALOGE("select error: %s", strerror(errno));
             break;
         }
 
@@ -1334,11 +1334,13 @@ void *event_loop_thread(void *arg) {
                         }
                         break;
                     case XCB_BUTTON_PRESS:
+                        ALOGE("XCB_BUTTON_PRESS ");
                         if (dispatcher.button_press_cb) {
                             dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
                         }
                         break;
                     case XCB_BUTTON_RELEASE:
+                        ALOGE("XCB_BUTTON_RELEASE ");
                         if (dispatcher.button_release_cb) {
                             dispatcher.button_release_cb(arg, (xcb_button_release_event_t *)event);
                         }
