@@ -1299,63 +1299,63 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
 
 void *event_loop_thread(void *arg) {
     struct display* display = (struct display*)arg;
-    xcb_connection_t *connection = (xcb_connection_t *)display->xcbconnection;
-    int xcb_fd = xcb_get_file_descriptor(connection);
-    if (xcb_fd < 0) {
-        ALOGE("Unable to obtain XCB file descriptor\n");
+    xcb_connection_t *connection = display->xcbconnection;
+
+    if (xcb_connection_has_error(connection)) {
+        ALOGE("XCB connection error: %d", xcb_connection_has_error(connection));
         return NULL;
     }
 
-    ALOGE("enter eventloopthread");
-    fd_set read_fds;
+    ALOGD("Starting XCB event loop");
     while (running) {
-        FD_ZERO(&read_fds);
-        FD_SET(xcb_fd, &read_fds);
-
-        struct timeval timeout = { .tv_sec = 0, .tv_usec = 100000 }; // 100ms
-
-        int ret = select(xcb_fd + 1, &read_fds, NULL, NULL, &timeout);
-        if (ret < 0) {
-            ALOGE("select error: %s", strerror(errno));
-            break;
-        }
-
-        if (FD_ISSET(xcb_fd, &read_fds)) {
-            while (xcb_generic_event_t *event = xcb_poll_for_event(connection)) {
-                switch (event->response_type & ~0x80) {
-                    case XCB_KEY_PRESS:
-                        if (dispatcher.key_press_cb) {
-                            dispatcher.key_press_cb(arg, (xcb_key_press_event_t *)event);
-                        }
-                        break;
-                    case XCB_KEY_RELEASE:
-                        if (dispatcher.key_release_cb) {
-                            dispatcher.key_release_cb(arg, (xcb_key_release_event_t *)event);
-                        }
-                        break;
-                    case XCB_BUTTON_PRESS:
-                        ALOGE("XCB_BUTTON_PRESS ");
-                        if (dispatcher.button_press_cb) {
-                            dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
-                        }
-                        break;
-                    case XCB_BUTTON_RELEASE:
-                        ALOGE("XCB_BUTTON_RELEASE ");
-                        if (dispatcher.button_release_cb) {
-                            dispatcher.button_release_cb(arg, (xcb_button_release_event_t *)event);
-                        }
-                        break;
-                    case XCB_MOTION_NOTIFY:
-                        if (dispatcher.motion_notify_cb) {
-                            dispatcher.motion_notify_cb(arg, (xcb_motion_notify_event_t *)event);
-                        }
-                        break;
-                }
-                free(event);
+        xcb_generic_event_t *event = xcb_wait_for_event(connection);
+        if (!event) {
+            if (xcb_connection_has_error(connection)) {
+                ALOGE("XCB connection error: %d", xcb_connection_has_error(connection));
+                break;
             }
+            continue;
         }
+
+        int event_count = 0;
+        do {
+            ALOGD("Processing event: type=%d", event->response_type & ~0x80);
+            switch (event->response_type & ~0x80) {
+                case XCB_KEY_PRESS:
+                    if (dispatcher.key_press_cb) {
+                        dispatcher.key_press_cb(arg, (xcb_key_press_event_t *)event);
+                    }
+                    break;
+                case XCB_KEY_RELEASE:
+                    if (dispatcher.key_release_cb) {
+                        dispatcher.key_release_cb(arg, (xcb_key_release_event_t *)event);
+                    }
+                    break;
+                case XCB_BUTTON_PRESS:
+                    ALOGV("XCB_BUTTON_PRESS received");
+                    if (dispatcher.button_press_cb) {
+                        dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
+                    }
+                    break;
+                case XCB_BUTTON_RELEASE:
+                    ALOGV("XCB_BUTTON_RELEASE received");
+                    if (dispatcher.button_release_cb) {
+                        dispatcher.button_release_cb(arg, (xcb_button_release_event_t *)event);
+                    }
+                    break;
+                case XCB_MOTION_NOTIFY:
+                    if (dispatcher.motion_notify_cb) {
+                        dispatcher.motion_notify_cb(arg, (xcb_motion_notify_event_t *)event);
+                    }
+                    break;
+            }
+            free(event);
+            event_count++;
+        } while ((event = xcb_poll_for_event(connection)) && running);
+        ALOGD("Processed %d events in one cycle", event_count);
     }
 
+    ALOGE("Exiting XCB event loop");
     return NULL;
 }
 
