@@ -135,11 +135,116 @@ void* egl_loop(void* data) {
     return NULL;
 }
 
+static const char* vertex_shader_source =
+    "#version 300 es\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "layout (location = 1) in vec2 aTexCoord;\n"
+    "out vec2 TexCoord;\n"
+    "void main() {\n"
+    "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
+    "    TexCoord = aTexCoord;\n"
+    "}\0";
 
+static const char* fragment_shader_source =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "out vec4 FragColor;\n"
+    "in vec2 TexCoord;\n"
+    "uniform sampler2D ourTexture;\n"
+    "void main() {\n"
+    "    vec4 color = texture(ourTexture, TexCoord);\n"
+    "    FragColor = vec4(color.b, color.g, color.r, color.a);\n"
+    "}\0";
 
-void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle, uint32_t  pixel_stride) {
-    // Wrap native handle into ANativeWindowBuffer for eglCreateImageKHR
- android::sp<android::GraphicBuffer> graphicBuffer = new android::GraphicBuffer(
+// 编译着色器
+static GLuint compile_shader(GLenum type, const char* source) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, NULL, infoLog);
+        ALOGE("Shader compilation failed: %s\n", infoLog);
+        return 0;
+    }
+    return shader;
+}
+
+static GLuint create_shader_program() {
+    GLuint vertexShader = compile_shader(GL_VERTEX_SHADER, vertex_shader_source);
+    GLuint fragmentShader = compile_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
+
+    if (!vertexShader || !fragmentShader) {
+        return 0;
+    }
+
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    GLint success;
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        ALOGE("Shader program linking failed: %s\n", infoLog);
+        return 0;
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    return shaderProgram;
+}
+
+void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle, uint32_t pixel_stride) {
+    static GLuint shader_program = 0;
+    static GLuint VAO = 0, VBO = 0, EBO = 0;
+    static int gl_initialized = 0;
+
+    if (!gl_initialized) {
+        // 创建着色器程序
+        shader_program = create_shader_program();
+        if (!shader_program) {
+            return;
+        }
+
+        // 设置顶点数据（全屏四边形）
+        float vertices[] = {
+            // 位置      // 纹理坐标
+            -1.0f, -1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+             1.0f,  1.0f, 1.0f, 1.0f,
+            -1.0f,  1.0f, 0.0f, 1.0f
+        };
+        unsigned int indices[] = {
+            0, 1, 2,
+            2, 3, 0
+        };
+
+        glGenVertexArraysOES(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArrayOES(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        gl_initialized = 1;
+    }
+
+    android::sp<android::GraphicBuffer> graphicBuffer = new android::GraphicBuffer(
             (native_handle_t*)drm_handle, android::GraphicBuffer::WRAP_HANDLE,
             drm_handle->width, drm_handle->height, drm_handle->format, 1 /* layers */,
             (uint64_t) android::GraphicBuffer::USAGE_HW_TEXTURE,
@@ -151,6 +256,7 @@ void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm
                                 image_attrs);
     if (image == EGL_NO_IMAGE_KHR) {
         ALOGE("Failed to create EGLImage from DMA-BUF: 0x%x", eglGetError());
+        return;
     }
 
     // Create input texture from the native buffer
@@ -162,7 +268,8 @@ void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm
     glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
 
     // Create output framebuffer and texture
-    GLuint output_framebuffer, output_texture;
+    GLuint output_framebuffer;
+    GLuint output_texture;
     glGenFramebuffers(1, &output_framebuffer);
     glGenTextures(1, &output_texture);
 
@@ -174,88 +281,30 @@ void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm
     glBindFramebuffer(GL_FRAMEBUFFER, output_framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture, 0);
 
-    // Simple vertex shader
-    const char* vertex_shader_source = R"(
-        attribute vec2 position;
-        attribute vec2 texcoord;
-        varying vec2 v_texcoord;
-        void main() {
-            gl_Position = vec4(position, 0.0, 1.0);
-            v_texcoord = texcoord;
-        }
-    )";
+    // 设置视口和着色器
+    glViewport(0, 0, drm_handle->width, drm_handle->height);
+    glUseProgram(shader_program);
 
-    // Fragment shader for ARGB to ABGR conversion (swap R and B channels)
-    const char* fragment_shader_source = R"(
-        precision mediump float;
-        uniform sampler2D u_texture;
-        varying vec2 v_texcoord;
-        void main() {
-            vec4 color = texture2D(u_texture, v_texcoord);
-            gl_FragColor = vec4(color.b, color.g, color.r, color.a);
-        }
-    )";
+    // 设置uniform变量
+    GLint texture_location = glGetUniformLocation(shader_program, "ourTexture");
+    glUniform1i(texture_location, 0);
 
-    // Compile and use shader program
-    GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
-    glCompileShader(vertex_shader);
-
-    GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
-    glCompileShader(fragment_shader);
-
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glLinkProgram(program);
-    glUseProgram(program);
-
-    // Set up quad vertices
-    float vertices[] = {
-        -1.0f, -1.0f, 0.0f, 1.0f,
-         1.0f, -1.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f, 0.0f, 0.0f,
-         1.0f,  1.0f, 1.0f, 0.0f
-    };
-
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    GLint position_attr = glGetAttribLocation(program, "position");
-    GLint texcoord_attr = glGetAttribLocation(program, "texcoord");
-
-    glEnableVertexAttribArray(position_attr);
-    glVertexAttribPointer(position_attr, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(texcoord_attr);
-    glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-
-    // Bind input texture and render
+    // 绑定输入纹理和渲染
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, input_texture);
-    glUniform1i(glGetUniformLocation(program, "u_texture"), 0);
 
-    glViewport(0, 0, drm_handle->width, drm_handle->height);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArrayOES(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glFinish();
 
-    // Copy result back to original buffer
-    glBindFramebuffer(GL_FRAMEBUFFER, output_framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, input_texture, 0);
+    // Copy result back to original texture
     glBindTexture(GL_TEXTURE_2D, input_texture);
     glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, drm_handle->width, drm_handle->height, 0);
 
-
     // Cleanup
-    glDeleteBuffers(1, &vbo);
-    glDeleteProgram(program);
-    glDeleteShader(vertex_shader);
-    glDeleteShader(fragment_shader);
-    glDeleteTextures(1, &output_texture);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteFramebuffers(1, &output_framebuffer);
+    glDeleteTextures(1, &output_texture);
     glDeleteTextures(1, &input_texture);
     eglDestroyImageKHR(display->egl_dpy, image);
 }
-

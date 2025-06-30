@@ -315,10 +315,9 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 }else {
 			return NULL;
 		}
-	/*	pdev->display->egl_work_queue.push_back(std::bind(egl_convert_argb_abgr, pdev->display,drm_handle,pixel_stride));
+		pdev->display->egl_work_queue.push_back(std::bind(egl_convert_argb_abgr, pdev->display,drm_handle,pixel_stride));
 		sem_post(&pdev->display->egl_go);
 		sem_wait(&pdev->display->egl_done);
-		*/
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
                 XRenderPictureAttributes pa;
