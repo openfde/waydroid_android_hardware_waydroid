@@ -315,9 +315,10 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 }else {
 			return NULL;
 		}
-		pdev->display->egl_work_queue.push_back(std::bind(egl_convert_argb_abgr, pdev->display,drm_handle,pixel_stride));
+	/*	pdev->display->egl_work_queue.push_back(std::bind(egl_convert_argb_abgr, pdev->display,drm_handle,pixel_stride));
 		sem_post(&pdev->display->egl_go);
 		sem_wait(&pdev->display->egl_done);
+		*/
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
                 ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
                 XRenderPictureAttributes pa;
@@ -463,8 +464,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 	*/
     }
 
-    if (use_subsurface)
-	XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
+    XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                    src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
 
     ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
@@ -1056,17 +1056,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         //     continue;
         // }
       
-         // if (pdev->use_subsurface ) {
-         adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
-          if (!pdev->use_subsurface ) {
+        if (pdev->use_subsurface ) {
+        	adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
+        }else {
 	     XRenderComposite(pdev->display->x11display, PictOpSrc, buf->xpicture, None, window->xpicture,
 		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
-	  }
-       /* }else {
-             XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->xpicture,
-                    0, 0, 0, 0, 0,0, buf->width, buf->height);
         }
-	*/
         window->last_layer_buffer = buf;
         window->lastLayer++;
 

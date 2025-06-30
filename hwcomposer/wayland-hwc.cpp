@@ -1479,7 +1479,6 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
                     display->visualid,
                     value_mask, value_list);
     if (!use_subsurfaces) {
-	    ALOGE("setfullscreen");
 	    // 设置窗口全屏
     xcb_intern_atom_cookie_t fullscreen_cookie = xcb_intern_atom(display->xcbconnection, 0, strlen("_NET_WM_STATE_FULLSCREEN"), "_NET_WM_STATE_FULLSCREEN");
     xcb_intern_atom_reply_t *fullscreen_reply = xcb_intern_atom_reply(display->xcbconnection, fullscreen_cookie, NULL);
