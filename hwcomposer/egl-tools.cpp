@@ -137,21 +137,18 @@ void* egl_loop(void* data) {
 
 
 
-void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle){
-      EGLint attribs[] = {
-        EGL_WIDTH, (EGLint)drm_handle->width,
-        EGL_HEIGHT, (EGLint)drm_handle->height,
-        EGL_LINUX_DRM_FOURCC_EXT,(EGLint) drm_handle->format,
-        EGL_DMA_BUF_PLANE0_FD_EXT, (EGLint)drm_handle->prime_fd,
-        EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-        EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)drm_handle->stride,
-        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (EGLint)(drm_handle->modifier & 0xFFFFFFFF),
-        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (EGLint)(drm_handle->modifier >> 32),
-        EGL_NONE
-    };
+void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle, uint32_t  pixel_stride) {
+    // Wrap native handle into ANativeWindowBuffer for eglCreateImageKHR
+ android::sp<android::GraphicBuffer> graphicBuffer = new android::GraphicBuffer(
+            (native_handle_t*)drm_handle, android::GraphicBuffer::WRAP_HANDLE,
+            drm_handle->width, drm_handle->height, drm_handle->format, 1 /* layers */,
+            (uint64_t) android::GraphicBuffer::USAGE_HW_TEXTURE,
+            pixel_stride);
 
+    EGLint image_attrs[] = { EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE };
     auto image = eglCreateImageKHR(display->egl_dpy, EGL_NO_CONTEXT,
-                                         EGL_NATIVE_BUFFER_ANDROID, NULL, attribs);
+                                EGL_NATIVE_BUFFER_ANDROID, (EGLClientBuffer) graphicBuffer->getNativeBuffer(),
+                                image_attrs);
     if (image == EGL_NO_IMAGE_KHR) {
         ALOGE("Failed to create EGLImage from DMA-BUF: 0x%x", eglGetError());
     }

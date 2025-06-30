@@ -29,4 +29,4 @@
 
 void* egl_loop(void* data);
 void egl_render_to_pixels(struct display* display, struct buffer* buf);
-void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle);
+void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle, uint32_t pixel_stride);

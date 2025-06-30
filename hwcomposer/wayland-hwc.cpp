@@ -1458,7 +1458,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
             display->width = display->full_width / display->scale;
     }
      display->colormap = xcb_generate_id(display->xcbconnection);
-        xcb_create_colormap(display->xcbconnection, XCB_COLORMAP_ALLOC_NONE, display->colormap, display->xcbscreen->root, display->visualid);
+     xcb_create_colormap(display->xcbconnection, XCB_COLORMAP_ALLOC_NONE, display->colormap, display->xcbscreen->root, display->visualid);
 
     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP;
     uint32_t value_list[] = {
@@ -1469,7 +1469,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         display->colormap
     };
 
-     window->xcbwindow = xcb_generate_id(display->xcbconnection);
+    window->xcbwindow = xcb_generate_id(display->xcbconnection);
     xcb_create_window(display->xcbconnection,
                     32,
                     window->xcbwindow,
@@ -1478,6 +1478,27 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
                     XCB_WINDOW_CLASS_INPUT_OUTPUT,
                     display->visualid,
                     value_mask, value_list);
+    if (!use_subsurfaces) {
+	    ALOGE("setfullscreen");
+	    // 设置窗口全屏
+    xcb_intern_atom_cookie_t fullscreen_cookie = xcb_intern_atom(display->xcbconnection, 0, strlen("_NET_WM_STATE_FULLSCREEN"), "_NET_WM_STATE_FULLSCREEN");
+    xcb_intern_atom_reply_t *fullscreen_reply = xcb_intern_atom_reply(display->xcbconnection, fullscreen_cookie, NULL);
+    xcb_intern_atom_cookie_t state_cookie = xcb_intern_atom(display->xcbconnection, 0, strlen("_NET_WM_STATE"), "_NET_WM_STATE");
+    xcb_intern_atom_reply_t *state_reply = xcb_intern_atom_reply(display->xcbconnection, state_cookie, NULL);
+
+    if (fullscreen_reply && state_reply) {
+        xcb_change_property(display->xcbconnection,
+                            XCB_PROP_MODE_REPLACE,
+                            window->xcbwindow,
+                            state_reply->atom,
+                            XCB_ATOM_ATOM,
+                            32,
+                            1,
+                            &fullscreen_reply->atom);
+        free(fullscreen_reply);
+        free(state_reply);
+    }
+    }
     XRenderPictureAttributes pa;
     pa.repeat = False;
     window->xpicture = XRenderCreatePicture(display->x11display, window->xcbwindow,display->argb_format, CPRepeat, &pa);
@@ -1507,10 +1528,6 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         return NULL;
     }
     xcb_map_window(display->xcbconnection, window->xcbwindow);
-
-
-
-
     xcb_change_property(
         display->xcbconnection,
         XCB_PROP_MODE_REPLACE,
