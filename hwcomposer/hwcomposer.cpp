@@ -267,47 +267,62 @@ static bool should_swap_rbchannels(int format) {
     }
 }
 
-static void * swaprb(struct waydroid_hwc_composer_device_1 *pdev, const struct gralloc_handle_t *drm_handle, sp<android::GraphicBuffer> dst_gb) {
-        // Create source GraphicBuffer from existing handle
-        sp<android::GraphicBuffer> src_gb = new android::GraphicBuffer(
-		(native_handle_t*)drm_handle, android::GraphicBuffer::WRAP_HANDLE,
-            drm_handle->width, drm_handle->height,
-            drm_handle->format,1, drm_handle->usage,
-            drm_handle->stride);
-        
-        if (src_gb->initCheck() != android::NO_ERROR) {
-            ALOGE("Failed to create source GraphicBuffer from handle");
-            return NULL;
-        }
-
-        pdev->display->egl_work_queue.push_back(std::bind(egl_convert_buffer_rb_swap, pdev->display, src_gb,dst_gb));
+static void * swaprb(struct waydroid_hwc_composer_device_1 *pdev, sp<android::GraphicBuffer> src_gb, sp<android::GraphicBuffer> dst_gb) {
+    pdev->display->egl_work_queue.push_back(std::bind(egl_convert_buffer_rb_swap, pdev->display, src_gb,dst_gb));
 	sem_post(&pdev->display->egl_go);
 	sem_wait(&pdev->display->egl_done);
 	return (void *)dst_gb->getNativeBuffer()->handle;
 }
 
-static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, const struct gralloc_handle_t *drm_handle, struct window *window, struct buffer *buf) {
+static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf) {
+	int width,height, stride, format, prime_fd;
+	int usage = GRALLOC_USAGE_HW_TEXTURE;
+    if (pdev->display->gtype == GRALLOC_GBM) {
+	struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
+	width = drm_handle->width;
+	height = drm_handle->height;
+	stride = drm_handle->stride;
+	format = drm_handle->format;
+	usage = drm_handle->usage;
+	prime_fd = drm_handle->prime_fd;
+    }else{
+	const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
+	width = gc_handle->width;
+	height = gc_handle->height;
+	stride = gc_handle->stride;
+	format = gc_handle->format;
+	prime_fd = gc_handle->prime_fd;
+    } 
     // Create destination GraphicBuffer for cloned data with RB channel swap
     sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
-        drm_handle->width, drm_handle->height, 
-        drm_handle->format, 
+       width, height, format, 
         GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER);
     
     if (dst_gb->initCheck() != android::NO_ERROR) {
         ALOGE("Failed to create destination GraphicBuffer");
         return ;
     }
-    if (should_swap_rbchannels(drm_handle->format)) {
-        if (!swaprb(pdev,drm_handle,dst_gb)){
+    // Create source GraphicBuffer from existing handle
+    sp<android::GraphicBuffer> src_gb = new android::GraphicBuffer(
+    (native_handle_t*)layer->handle, android::GraphicBuffer::WRAP_HANDLE,
+        width, height,format,1,uint64_t(usage),stride);
+    
+    if (src_gb->initCheck() != android::NO_ERROR) {
+        ALOGE("Failed to create source GraphicBuffer from handle");
+        return ;
+    }
+    if (should_swap_rbchannels(format)) {
+        if (!swaprb(pdev,src_gb,dst_gb)){
             ALOGE("swap rb failed");
             return ;
         }
         const native_handle_t* native_handle = dst_gb->getNativeBuffer()->handle;
-        drm_handle = (struct gralloc_handle_t*)native_handle;
+        struct gralloc_handle_t * drm_handle = (struct gralloc_handle_t*)native_handle;
+        prime_fd = drm_handle->prime_fd;
 	}
     if (window != NULL ) {
         xcb_window_t xcbwindow = window->xcbwindow;
-        int x11_fd = dup(drm_handle->prime_fd);
+        int x11_fd = dup(prime_fd);
         if (x11_fd >= 0) {
             fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
         }else {
@@ -319,7 +334,7 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, cons
         XRenderPictureAttributes pa;
         pa.repeat = False;
         xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
-            drm_handle->width * drm_handle->height * 4, drm_handle->width, drm_handle->height,drm_handle->stride, 32,32,x11_fd);
+            width * height * 4,width, height,stride, 32,32,x11_fd);
         xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
         if (pixmap_error) {
             ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
@@ -382,7 +397,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	buf->width=drm_handle->width;
 	buf->height=drm_handle->height;
 	if (1) {
-            getXRenderPicture(pdev, drm_handle, window, buf);
+            getXRenderPicture(pdev, layer, window, buf);
             if (! buf->xpicture) {
                 delete buf;
                 return NULL;
@@ -424,10 +439,10 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         }
     } else if (pdev->display->gtype == GRALLOC_LEOPARD) {
         const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
-	buf->width=gc_handle->width;
-	buf->height=gc_handle->height;
+	    buf->width=gc_handle->width;
+	    buf->height=gc_handle->height;
 	if (1) {
-            //getXRenderPicture(pdev, drm_handle, window, buf);
+            getXRenderPicture(pdev, layer, window, buf);
             if (! buf->xpicture) {
                 delete buf;
                 return NULL;
