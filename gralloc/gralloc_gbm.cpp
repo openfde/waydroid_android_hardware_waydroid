@@ -23,7 +23,6 @@
  */
 
 #define LOG_TAG "GRALLOC-GBM"
-#define LOG_NDEBUG 0
 
 #include <log/log.h>
 #include <cutils/atomic.h>
