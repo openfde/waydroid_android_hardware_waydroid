@@ -23,6 +23,7 @@
  */
 
 #define LOG_TAG "GRALLOC-GBM"
+#define LOG_NDEBUG 0
 
 #include <log/log.h>
 #include <cutils/atomic.h>
@@ -47,6 +48,7 @@
 #include <unordered_map>
 #include <sstream>
 #include <vector>
+#include <cmath>
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -140,6 +142,9 @@ static uint32_t get_gbm_format(int format)
 	case HAL_PIXEL_FORMAT_RGBA_1010102:
 		fmt = GBM_FORMAT_ABGR2101010;
 		break;
+    case HAL_PIXEL_FORMAT_BLOB:
+		fmt = GBM_FORMAT_R8;
+		break;
 	case HAL_PIXEL_FORMAT_YCbCr_422_SP:
 	case HAL_PIXEL_FORMAT_YCrCb_420_SP:
 	case HAL_PIXEL_FORMAT_YCbCr_420_888:
@@ -204,6 +209,23 @@ static unsigned int get_pipe_bind(int usage)
 
 	return bind;
 }
+static std::pair<int, int> find_closest_size(int blob) {
+    if (blob <= 0) {
+        return {0, 0};
+    }
+
+    int width = static_cast<int>(std::sqrt(blob));
+    int height = width = ((width + 7) / 8) * 8;
+
+    while (true) {
+        if (width * height == blob) {
+            return {width, height};
+        } else if (width * height < blob) {
+            return {width, height + 1};
+        }
+        height--;
+    }
+}
 
 static struct gbm_bo *gbm_import(struct gbm_device *gbm,
 		buffer_handle_t _handle)
@@ -229,7 +251,11 @@ static struct gbm_bo *gbm_import(struct gbm_device *gbm,
 		data.width /= 2;
 		data.height += handle->height / 2;
 	}
-
+    if (handle->format == HAL_PIXEL_FORMAT_BLOB) {
+        std::pair<int, int> size = find_closest_size(data.width);
+        data.width = size.first;
+        data.height = size.second;
+    }
 	#ifdef GBM_BO_IMPORT_FD_MODIFIER
 	data.num_fds = 1;
 	data.fds[0] = handle->prime_fd;
@@ -272,6 +298,11 @@ static struct gbm_bo *gbm_alloc(struct gbm_device *gbm,
 		height += handle->height / 2;
 	}
 
+    if (handle->format == HAL_PIXEL_FORMAT_BLOB) {
+        std::pair<int, int> size = find_closest_size(width);
+        width = size.first;
+        height = size.second;
+    }
 	ALOGV("create BO, size=%dx%d, fmt=%d, usage=%x",
 	      handle->width, handle->height, handle->format, usage);
 	std::vector<uint64_t> modifiers = get_supported_modifiers(gbm, format);
@@ -548,11 +579,19 @@ int gralloc_gbm_bo_lock_ycbcr(buffer_handle_t handle,
 
 	switch (hnd->format) {
 	case HAL_PIXEL_FORMAT_YCrCb_420_SP:
-	case HAL_PIXEL_FORMAT_YCbCr_420_888:
 		ystride = cstride = GRALLOC_ALIGN(hnd->width, 16);
 		ycbcr->y = addr;
 		ycbcr->cr = (unsigned char *)addr + ystride * hnd->height;
 		ycbcr->cb = (unsigned char *)addr + ystride * hnd->height + 1;
+		ycbcr->ystride = ystride;
+		ycbcr->cstride = cstride;
+		ycbcr->chroma_step = 2;
+		break;
+	case HAL_PIXEL_FORMAT_YCbCr_420_888:
+		ystride = cstride = GRALLOC_ALIGN(hnd->width, 16);
+		ycbcr->y = addr;
+		ycbcr->cb = (unsigned char *)addr + ystride * hnd->height;
+		ycbcr->cr = (unsigned char *)addr + ystride * hnd->height + 1;
 		ycbcr->ystride = ystride;
 		ycbcr->cstride = cstride;
 		ycbcr->chroma_step = 2;
