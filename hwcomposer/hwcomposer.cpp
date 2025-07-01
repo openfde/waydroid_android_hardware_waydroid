@@ -254,6 +254,38 @@ static void update_shm_buffer(struct display* display, struct buffer *buffer)
         android::GraphicBufferMapper::get().unlock(buffer->handle);
     }
 }
+static bool should_swap_rbchannels(int format) {
+    switch (format) {
+        case HAL_PIXEL_FORMAT_BGRA_8888:
+            return false;  // 需要交换
+        case HAL_PIXEL_FORMAT_RGBA_8888:
+        case HAL_PIXEL_FORMAT_RGBX_8888:
+            return true; // 不需要交换
+        default:
+            // 可以通过实际测试来确定默认行为/
+	    return true;
+    }
+}
+
+static void * swaprb(struct waydroid_hwc_composer_device_1 *pdev, const struct gralloc_handle_t *drm_handle, sp<android::GraphicBuffer> dst_gb) {
+        
+        // Create source GraphicBuffer from existing handle
+        sp<android::GraphicBuffer> src_gb = new android::GraphicBuffer(
+		(native_handle_t*)drm_handle, android::GraphicBuffer::WRAP_HANDLE,
+            drm_handle->width, drm_handle->height,
+            drm_handle->format,1, drm_handle->usage,
+            drm_handle->stride);
+        
+        if (src_gb->initCheck() != android::NO_ERROR) {
+            ALOGE("Failed to create source GraphicBuffer from handle");
+            return NULL;
+        }
+
+        pdev->display->egl_work_queue.push_back(std::bind(egl_convert_buffer_rb_swap, pdev->display, src_gb,dst_gb));
+	sem_post(&pdev->display->egl_go);
+	sem_wait(&pdev->display->egl_done);
+	return (void *)dst_gb->getNativeBuffer()->handle;
+}
 
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window)
 {
@@ -290,8 +322,9 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 update_shm_buffer(pdev->display, it->second);
                 return it->second;
             }
-        } else
+        } else {
             return it->second;
+	}
     }
 
     struct buffer *buf;
@@ -300,26 +333,42 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     buf = new struct buffer();
     buf->xcbpixmap = 0;
     if (pdev->display->gtype == GRALLOC_GBM) {
-        struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
-	ALOGE("in gbm");
+	struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
+        // Create destination GraphicBuffer for cloned data with RB channel swap
+        sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
+            drm_handle->width, drm_handle->height, 
+            drm_handle->format, 
+            GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER);
+        
+        if (dst_gb->initCheck() != android::NO_ERROR) {
+            ALOGE("Failed to create destination GraphicBuffer");
+            return NULL;
+        }
+	if (should_swap_rbchannels(drm_handle->format)) {
+		ALOGE("should_swap_rbchannels");
+		if (!swaprb(pdev,drm_handle,dst_gb)){
+			ALOGE("swap rb failed");
+			return NULL;
+		}
+		const native_handle_t* native_handle = dst_gb->getNativeBuffer()->handle;
+		drm_handle = (struct gralloc_handle_t*)native_handle;
+	}
         if (1) {
     	buf->width=drm_handle->width;
 	buf->height=drm_handle->height;
-	ALOGE("in gbm dma buf");
             // ret = create_dmabuf_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, -1 /* compute drm format */, drm_handle->prime_fd, pixel_stride, drm_handle->stride, 0 /* offset */, drm_handle->modifier, layer->handle);
             if (window != NULL ) {
+
                 xcb_window_t xcbwindow = window->xcbwindow;
                 int x11_fd = dup(drm_handle->prime_fd);
                 if (x11_fd >= 0) {
                     fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
                 }else {
+			ALOGE("dup fd failed");
 			return NULL;
 		}
-		pdev->display->egl_work_queue.push_back(std::bind(egl_convert_argb_abgr, pdev->display,drm_handle,pixel_stride));
-		sem_post(&pdev->display->egl_go);
-		sem_wait(&pdev->display->egl_done);
+
                 buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-                ALOGE("gy dri3 in get_wl _buffer width %d height %d",width,height);
                 XRenderPictureAttributes pa;
                 pa.repeat = False;
                 xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
@@ -330,7 +379,6 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                     free(pixmap_error);
 		    return NULL;
                 }
-                ALOGE("gy lastlayer %d, name is %s",window->lastLayer,window->appID.c_str());
                 buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
                 close(x11_fd);
             }
@@ -371,24 +419,39 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         }
     } else if (pdev->display->gtype == GRALLOC_LEOPARD) {
         const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
-        if (pdev->display->dmabuf) {
+        if (1) {
+    	buf->width=gc_handle->width;
+	buf->height=gc_handle->height;
+            if (window != NULL ) {
+                xcb_window_t xcbwindow = window->xcbwindow;
+                int x11_fd = dup(gc_handle->prime_fd);
+                if (x11_fd >= 0) {
+                    fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
+                }else {
+			return NULL;
+		}
+
+                buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+                XRenderPictureAttributes pa;
+                pa.repeat = False;
+                xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
+                    gc_handle->width * gc_handle->height * 4, gc_handle->width, gc_handle->height,gc_handle->stride, 32,32,x11_fd);
+                xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+                if (pixmap_error) {
+                    ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+                    free(pixmap_error);
+		    return NULL;
+                }
+                buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
+                close(x11_fd);
+            }
+        /*if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format,
                 -1, gc_handle->prime_fd, pixel_stride, gc_handle->stride, 0,DRM_FORMAT_MOD_INVALID, layer->handle);
+		*/
         } else {
             ret = create_shm_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format, pixel_stride, layer->handle);
             update_shm_buffer(pdev->display, buf);
-        }
-        if (window != NULL) {
-            buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-            xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, window->xcbwindow,
-                width * height * 4, width, height, gc_handle->stride, 24, 32, gc_handle->prime_fd);
-            xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-            // xcb_flush(pdev->display->xcbconnection);
-
-            if (pixmap_error) {
-                ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
-                free(pixmap_error);
-            }
         }
     } else {
         if (pdev->display->gtype == GRALLOC_ANDROID) {
@@ -426,11 +489,11 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
         sourceCrop.right = layer->sourceCropi.bottom;
         sourceCrop.bottom = layer->sourceCropi.right;
     }
-    ALOGE("frame geo left %d top %d right %d bottom %d lastlayer %d", sourceCrop.left,sourceCrop.top, sourceCrop.right,sourceCrop.bottom, window->lastLayer);
+    //ALOGE("frame geo left %d top %d right %d bottom %d lastlayer %d", sourceCrop.left,sourceCrop.top, sourceCrop.right,sourceCrop.bottom, window->lastLayer);
     xcb_configure_window_value_list_t values;
     values.x = floor(layer->displayFrame.left / pdev->display->scale);
     values.y = floor(layer->displayFrame.top / pdev->display->scale);
-    ALOGE("move layer=%d to x %d y %d", window->lastLayer,values.x,values.y);
+    //ALOGE("move layer=%d to x %d y %d", window->lastLayer,values.x,values.y);
     // uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
    //xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
     // Calculate source crop dimensions
@@ -652,13 +715,14 @@ void get_input_shape(xcb_connection_t *conn, xcb_window_t window) {
         return;
     }
 
-    int num_rects = xcb_shape_get_rectangles_rectangles_length(reply);
-    xcb_rectangle_t *rects = xcb_shape_get_rectangles_rectangles(reply);
-    ALOGE("hwc_set Current input shape (%d rectangles):\n", num_rects);
+    //int num_rects = xcb_shape_get_rectangles_rectangles_length(reply);
+    //xcb_rectangle_t *rects = xcb_shape_get_rectangles_rectangles(reply);
+    /*ALOGE("hwc_set Current input shape (%d rectangles):\n", num_rects);
     for (int i = 0; i < num_rects; i++) {
         ALOGE("  hwc_set rectangle %d: x=%d, y=%d, width=%u, height=%u\n",
                i, rects[i].x, rects[i].y, rects[i].width, rects[i].height);
     }
+    */
 
     free(reply);
 }
@@ -675,6 +739,17 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
     hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
     size_t fb_target = -1;
     int err = 0;
+    /*if ((contents->flags & HWC_GEOMETRY_CHANGED)) {
+        for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
+            if (it->second) {
+                // This window has no changes in layers, leaving it
+                if (!it->second->lastLayer)
+                    continue;
+		it->second->converted_prime_fds.clear();
+	    }
+   	 }
+    }
+    */
 
     if (pdev->display->geo_changed) {
         for (auto it = pdev->display->buffer_map.begin(); it != pdev->display->buffer_map.end(); it++) {
@@ -943,7 +1018,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             if (layer_name.substr(0, 4) == "TID:") {
                 std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
                 std::string layer_aid = layer_name.substr(layer_name.find('#') + 1, layer_name.find('/') - layer_name.find('#') - 1);
-		ALOGE("gy layer _aid %s", layer_aid.c_str());
 
                 bool showWindow = false;
                 std::istringstream iss(blacklist_apps);
@@ -1212,14 +1286,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             size_t layer = l;
             std::string layer_name = pdev->display->layer_names[layer];
             hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
-            ALOGE("hwc_set layer_name: %s", layer_name.c_str()); 
             if (layer_name.substr(0, 4) == "TID:") {
                 std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
                 uint16_t w = fb_layer->displayFrame.right - fb_layer->displayFrame.left;
                 uint16_t h = fb_layer->displayFrame.bottom - fb_layer->displayFrame.top;
                 hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
                 if(layer_tid == it->first && !(fb_layer->flags & HWC_SKIP_LAYER)){
-                    ALOGE("hwc_set layer_tid: %s, rect i: %d, left: %d, top: %d, width: %u, height: %u", layer_tid.c_str(), i, fb_layer->displayFrame.left, fb_layer->displayFrame.top, w, h);
                     rects[i++] = {static_cast<int16_t>(fb_layer->displayFrame.left), static_cast<int16_t>(fb_layer->displayFrame.top), w, h};
                 }
             }
@@ -1561,7 +1633,7 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     pdev->vsync_callback_enabled = true;
 
     // Initialize width and height with user-provided overrides if any
-    choose_width_height(pdev->display, 1920, 1080);
+    choose_width_height(pdev->display, 1920, 1280);
 
     //create Openfde window to match desktop file openfde.desktop
     auto first_window = create_window(pdev->display, pdev->use_subsurface, "Openfde", "0", {0, 0, 0, 255});

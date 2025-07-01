@@ -201,6 +201,7 @@ struct display {
 };
 
 struct buffer {
+	int prime_fd;
     struct wl_buffer *buffer;
     struct wp_presentation_feedback *feedback;
     xcb_pixmap_t xcbpixmap;

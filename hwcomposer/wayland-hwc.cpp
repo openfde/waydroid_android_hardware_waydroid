@@ -90,6 +90,9 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         xcb_free_pixmap(display->xcbconnection, buf->xcbpixmap);
         buf->xcbpixmap = 0;
     }
+    if (buf->prime_fd) {
+
+    }
     if (buf->xpicture) {
         XRenderFreePicture(display->x11display, buf->xpicture);
         buf->xpicture = 0;

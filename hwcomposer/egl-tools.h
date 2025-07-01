@@ -26,7 +26,9 @@
 #pragma once
 
 #include "wayland-hwc.h"
+#include <ui/GraphicBuffer.h>
 
 void* egl_loop(void* data);
 void egl_render_to_pixels(struct display* display, struct buffer* buf);
 void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle, uint32_t pixel_stride);
+void egl_convert_buffer_rb_swap(struct display* display, android::sp<android::GraphicBuffer> src_buffer, android::sp<android::GraphicBuffer> dst_buffer);

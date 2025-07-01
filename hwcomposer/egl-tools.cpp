@@ -199,12 +199,25 @@ static GLuint create_shader_program() {
     glDeleteShader(fragmentShader);
     return shaderProgram;
 }
+static bool should_swap_channels(int format) {
+    switch (format) {
+        case HAL_PIXEL_FORMAT_BGRA_8888:
+            return false;  // 需要交换
+        case HAL_PIXEL_FORMAT_RGBA_8888:
+        case HAL_PIXEL_FORMAT_RGBX_8888:
+            return true; // 不需要交换
+        default:
+            // 可以通过实际测试来确定默认行为/
+	    return true;
+    }
+}
 
 void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm_handle, uint32_t pixel_stride) {
     static GLuint shader_program = 0;
     static GLuint VAO = 0, VBO = 0, EBO = 0;
     static int gl_initialized = 0;
-
+	if (!should_swap_channels(drm_handle->format))
+		return ;
     if (!gl_initialized) {
         // 创建着色器程序
         shader_program = create_shader_program();
@@ -295,11 +308,11 @@ void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm
 
     glBindVertexArrayOES(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glFinish();
 
     // Copy result back to original texture
     glBindTexture(GL_TEXTURE_2D, input_texture);
     glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, drm_handle->width, drm_handle->height, 0);
+    glFinish();
 
     // Cleanup
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -308,3 +321,128 @@ void egl_convert_argb_abgr(struct display* display, struct gralloc_handle_t *drm
     glDeleteTextures(1, &input_texture);
     eglDestroyImageKHR(display->egl_dpy, image);
 }
+
+void egl_convert_buffer_rb_swap(struct display* display, android::sp<android::GraphicBuffer> src_buffer, android::sp<android::GraphicBuffer> dst_buffer) {
+    static GLuint shader_program = 0;
+    static GLuint VAO = 0, VBO = 0, EBO = 0;
+    static int gl_initialized = 0;
+
+    if (!gl_initialized) {
+        // 创建着色器程序
+        shader_program = create_shader_program();
+        if (!shader_program) {
+            return;
+        }
+
+        // 设置顶点数据（全屏四边形）
+        float vertices[] = {
+            // 位置      // 纹理坐标
+            -1.0f, -1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+             1.0f,  1.0f, 1.0f, 1.0f,
+            -1.0f,  1.0f, 0.0f, 1.0f
+        };
+        unsigned int indices[] = {
+            0, 1, 2,
+            2, 3, 0
+        };
+
+        glGenVertexArraysOES(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArrayOES(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        gl_initialized = 1;
+    }
+
+    EGLint image_attrs[] = { EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE };
+
+    // Create EGLImage for source buffer
+    auto src_image = eglCreateImageKHR(display->egl_dpy, EGL_NO_CONTEXT,
+                                    EGL_NATIVE_BUFFER_ANDROID, (EGLClientBuffer) src_buffer->getNativeBuffer(),
+                                    image_attrs);
+    if (src_image == EGL_NO_IMAGE_KHR) {
+        ALOGE("Failed to create EGLImage from source buffer: 0x%x", eglGetError());
+        return;
+    }
+
+    // Create EGLImage for destination buffer
+    auto dst_image = eglCreateImageKHR(display->egl_dpy, EGL_NO_CONTEXT,
+                                    EGL_NATIVE_BUFFER_ANDROID, (EGLClientBuffer) dst_buffer->getNativeBuffer(),
+                                    image_attrs);
+    if (dst_image == EGL_NO_IMAGE_KHR) {
+        ALOGE("Failed to create EGLImage from destination buffer: 0x%x", eglGetError());
+        eglDestroyImageKHR(display->egl_dpy, src_image);
+        return;
+    }
+
+    // Create texture for source buffer
+    GLuint src_texture;
+    glGenTextures(1, &src_texture);
+    glBindTexture(GL_TEXTURE_2D, src_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, src_image);
+
+    // Create texture for destination buffer
+    GLuint dst_texture;
+    glGenTextures(1, &dst_texture);
+    glBindTexture(GL_TEXTURE_2D, dst_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, dst_image);
+
+    // Create framebuffer and bind destination texture
+    GLuint framebuffer;
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_texture, 0);
+
+    // Check framebuffer completeness
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        ALOGE("Framebuffer not complete");
+	    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	    glDeleteFramebuffers(1, &framebuffer);
+	    glDeleteTextures(1, &src_texture);
+	    glDeleteTextures(1, &dst_texture);
+	    eglDestroyImageKHR(display->egl_dpy, src_image);
+	    eglDestroyImageKHR(display->egl_dpy, dst_image);
+	return ;
+    }
+
+    // Set viewport and use shader program
+    glViewport(0, 0, src_buffer->getWidth(), src_buffer->getHeight());
+    glUseProgram(shader_program);
+
+    // Set uniform variable
+    GLint texture_location = glGetUniformLocation(shader_program, "ourTexture");
+    glUniform1i(texture_location, 0);
+
+    // Bind source texture and render
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, src_texture);
+
+    glBindVertexArrayOES(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glFinish();
+
+    // Cleanup
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &framebuffer);
+    glDeleteTextures(1, &src_texture);
+    glDeleteTextures(1, &dst_texture);
+    eglDestroyImageKHR(display->egl_dpy, src_image);
+    eglDestroyImageKHR(display->egl_dpy, dst_image);
+}
+
