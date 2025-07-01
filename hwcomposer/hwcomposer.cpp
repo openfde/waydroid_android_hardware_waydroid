@@ -298,7 +298,6 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, cons
         return ;
     }
     if (should_swap_rbchannels(drm_handle->format)) {
-        ALOGE("should_swap_rbchannels");
         if (!swaprb(pdev,drm_handle,dst_gb)){
             ALOGE("swap rb failed");
             return ;
@@ -356,10 +355,8 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     if (!height)
         height = layer->displayFrame.bottom - layer->displayFrame.top;
 
-    ALOGE("displayframe width %d, hegith %d", width,height);
     auto it = pdev->display->buffer_map.find(layer->handle);
     if (it != pdev->display->buffer_map.end()) {
-	    ALOGE("find buf from map for %s %d layerhandle %p", window->appID.c_str(), window->lastLayer,(int *)layer->handle);
         if (it->second->isShm) {
             if (width != it->second->width || height != it->second->height) {
                 destroy_buffer(pdev->display, it->second);
@@ -430,7 +427,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	buf->width=gc_handle->width;
 	buf->height=gc_handle->height;
 	if (1) {
-            getXRenderPicture(pdev, drm_handle, window, buf);
+            //getXRenderPicture(pdev, drm_handle, window, buf);
             if (! buf->xpicture) {
                 delete buf;
                 return NULL;
@@ -515,7 +512,6 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                    src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
 
-    ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
     return 0;
 }
 
@@ -1617,9 +1613,6 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
 
     pthread_mutex_init(&pdev->vsync_lock, NULL);
     pdev->vsync_callback_enabled = true;
-
-    // Initialize width and height with user-provided overrides if any
-    choose_width_height(pdev->display, 1920, 1280);
 
     //create Openfde window to match desktop file openfde.desktop
     auto first_window = create_window(pdev->display, pdev->use_subsurface, "Openfde", "0", {0, 0, 0, 255});

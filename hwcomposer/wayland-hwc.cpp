@@ -1366,7 +1366,6 @@ void *event_loop_thread(void *arg) {
 struct window *
 create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
 {
-	ALOGE("%d %d", use_subsurfaces, color.a);
     struct window *window = new struct window();
     if (!window)
         return NULL;
@@ -1542,7 +1541,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         strlen(appID_title.c_str()),
         appID_title.c_str()
     );
-    ALOGE("gy xcreate xcb window %s",appID_title.c_str());
+    ALOGE("gy xcreate xcb window %s color %d",appID_title.c_str(),color.a);
 
 /*
     window->xcbgc = xcb_generate_id(display->xcbconnection);
@@ -1670,9 +1669,34 @@ create_display(const char *gralloc)
     display->isTouchDown = false;
     display->lastAxisEventNanoSeconds = 0;
     display->gesture_scale = 260;
-    display->scale = 1.0;
-    display->full_width=1920;
-    display->full_height=1280;
+      // Get screen resolution and scale
+    display->full_width = display->xcbscreen->width_in_pixels;
+    display->full_height = display->xcbscreen->height_in_pixels;
+    ALOGE("pixels width %d height %d",display->xcbscreen->width_in_pixels, display->xcbscreen->height_in_pixels);
+
+    // Get scale factor from X11 resources or Xft.dpi
+    int screen_mm_width = display->xcbscreen->width_in_millimeters;
+    int screen_mm_height = display->xcbscreen->height_in_millimeters;
+    ALOGE("millimeters width %d height %d",display->xcbscreen->width_in_millimeters, display->xcbscreen->height_in_millimeters);
+
+    if (screen_mm_width > 0 && screen_mm_height > 0) {
+        // Calculate DPI
+        double dpi_x = (double)display->full_width * 25.4 / screen_mm_width;
+        double dpi_y = (double)display->full_height * 25.4 / screen_mm_height;
+        double avg_dpi = (dpi_x + dpi_y) / 2.0;
+
+        // Calculate scale factor based on DPI (96 DPI is considered scale 1.0)
+        display->scale = avg_dpi / 96.0;
+
+        // Clamp scale to reasonable values
+        if (display->scale < 1.0) display->scale = 1.0;
+        if (display->scale > 3.0) display->scale = 3.0;
+	ALOGE("finanl scale%f",display->scale);
+    } else {
+        display->scale = 1.0;
+    }
+    display->width = display->full_width /display->scale;
+    display->height = display->full_height /display->scale;
      struct display *d = (struct display*)display;
       d->input_fd[INPUT_POINTER] = -1;
         d->ptrPrvX = 0;
