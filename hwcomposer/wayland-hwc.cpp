@@ -1324,6 +1324,10 @@ void *event_loop_thread(void *arg) {
         do {
             ALOGD("Processing event: type=%d", event->response_type & ~0x80);
             switch (event->response_type & ~0x80) {
+                case XCB_CLIENT_MESSAGE: {
+                    ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
+                    break;
+                }
                 case XCB_KEY_PRESS:
                     if (dispatcher.key_press_cb) {
                         dispatcher.key_press_cb(arg, (xcb_key_press_event_t *)event);
@@ -1469,7 +1473,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         0,  // 设置不透明的黑色背景，避免窗口透明
         0,
         XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
-        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION,
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_STRUCTURE_NOTIFY,
         display->colormap
     };
 
@@ -1530,6 +1534,24 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         ALOGE("Cannot get DRI3 file descriptor");
         return NULL;
     }
+
+    //Register WM_PROTOCOLS and WM_DELETE_WINDOW
+    xcb_intern_atom_cookie_t wm_protocols_cookie = xcb_intern_atom(display->xcbconnection, 0, strlen("WM_PROTOCOLS"), "WM_PROTOCOLS");
+    xcb_intern_atom_cookie_t wm_delete_cookie = xcb_intern_atom(display->xcbconnection, 0, strlen("WM_DELETE_WINDOW"), "WM_DELETE_WINDOW");
+    xcb_intern_atom_reply_t *wm_protocols_reply = xcb_intern_atom_reply(display->xcbconnection, wm_protocols_cookie, NULL);
+    xcb_intern_atom_reply_t *wm_delete_reply = xcb_intern_atom_reply(display->xcbconnection, wm_delete_cookie, NULL);
+    if(wm_protocols_reply || wm_delete_reply){
+        xcb_atom_t wm_protocols = wm_protocols_reply->atom;
+        xcb_atom_t wm_delete_window = wm_delete_reply->atom;
+        free(wm_protocols_reply);
+        free(wm_delete_reply);
+
+        //Set the WM_PROTOCOLS property to declare support for WM_DELETE_WINDOW
+        xcb_change_property(display->xcbconnection, XCB_PROP_MODE_REPLACE, window->xcbwindow,
+                            wm_protocols, XCB_ATOM_ATOM, 32,
+                            1, &wm_delete_window);
+    }
+
     xcb_map_window(display->xcbconnection, window->xcbwindow);
     xcb_change_property(
         display->xcbconnection,
