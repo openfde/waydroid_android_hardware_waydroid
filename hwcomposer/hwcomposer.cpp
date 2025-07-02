@@ -274,25 +274,40 @@ static void * swaprb(struct waydroid_hwc_composer_device_1 *pdev, sp<android::Gr
 	return (void *)dst_gb->getNativeBuffer()->handle;
 }
 
-static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf) {
+static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf, int pixel_stride) {
 	int width,height, stride, format, prime_fd;
 	int usage = GRALLOC_USAGE_HW_TEXTURE;
     if (pdev->display->gtype == GRALLOC_GBM) {
-	struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
-	width = drm_handle->width;
-	height = drm_handle->height;
-	stride = drm_handle->stride;
-	format = drm_handle->format;
-	usage = drm_handle->usage;
-	prime_fd = drm_handle->prime_fd;
-    }else{
-	const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
-	width = gc_handle->width;
-	height = gc_handle->height;
-	stride = gc_handle->stride;
-	format = gc_handle->format;
-	prime_fd = gc_handle->prime_fd;
-    } 
+        struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
+        width = drm_handle->width;
+        height = drm_handle->height;
+        stride = drm_handle->stride;
+        format = drm_handle->format;
+        usage = drm_handle->usage;
+        prime_fd = drm_handle->prime_fd;
+    }else if (pdev->display->gtype == GRALLOC_LEOPARD) {
+        const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
+        width = gc_handle->width;
+        height = gc_handle->height;
+        stride = gc_handle->stride;
+        format = gc_handle->format;
+        prime_fd = gc_handle->prime_fd;
+    }else if (pdev->display->gtype == GRALLOC_X100) {
+        const X100_native_handle_t *x100_handle = (const X100_native_handle_t *)layer->handle;
+        width = x100_handle->iWidth;
+        height = x100_handle->iHeight;
+        stride = pixel_stride * 4;
+        format = x100_handle->iFormat;
+        prime_fd = x100_handle->fd[0];
+   // }else if (pdev->display->gtype == GRALLOC_CROS){
+    }else { 
+	const struct cros_gralloc_handle *cros_handle = (const struct cros_gralloc_handle *)layer->handle;
+        width = cros_handle->width;
+        height = cros_handle->height;
+        stride = cros_handle->strides[0];
+        format = cros_handle->droid_format;
+        prime_fd = cros_handle->fds[0];
+    }
     // Create destination GraphicBuffer for cloned data with RB channel swap
     sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
        width, height, format, 
@@ -397,7 +412,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	buf->width=drm_handle->width;
 	buf->height=drm_handle->height;
 	if (1) {
-            getXRenderPicture(pdev, layer, window, buf);
+            getXRenderPicture(pdev, layer, window, buf,pixel_stride);
             if (! buf->xpicture) {
                 delete buf;
                 return NULL;
@@ -416,22 +431,30 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         update_shm_buffer(pdev->display, buf);
     } else if (pdev->display->gtype == GRALLOC_CROS) {
         const struct cros_gralloc_handle *cros_handle = (const struct cros_gralloc_handle *)layer->handle;
-        if (pdev->display->dmabuf) {
-            ret = create_dmabuf_wl_buffer(pdev->display, buf, cros_handle->width, cros_handle->height, cros_handle->droid_format, cros_handle->format, cros_handle->fds[0], pixel_stride, cros_handle->strides[0], cros_handle->offsets[0], cros_handle->format_modifier, layer->handle);
+        if (1) {
+        buf->width=cros_handle->width;
+        buf->height=cros_handle->height;
+        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+            if (! buf->xpicture) {
+                delete buf;
+                return NULL;
+            }
         } else {
             ret = create_shm_wl_buffer(pdev->display, buf, cros_handle->width, cros_handle->height, cros_handle->droid_format, pixel_stride, layer->handle);
             update_shm_buffer(pdev->display, buf);
         }
     } else if (pdev->display->gtype == GRALLOC_X100) {
-        const X100_native_handle_t *cros_handle = (const X100_native_handle_t *)layer->handle;
-        if (pdev->display->dmabuf) {
-		//stride = pixel_stride * 4 is based on aligned memory by page(32bit)
-            ret = create_dmabuf_wl_buffer(pdev->display, buf, cros_handle->iWidth, cros_handle->iHeight, cros_handle->iFormat, -1, cros_handle->fd[0], pixel_stride, pixel_stride *4, 0,DRM_FORMAT_MOD_INVALID, layer->handle);
-            if (ret != 0 ) {
-                ALOGE("x100 create dmabuf wl buffer failed");
+        const X100_native_handle_t *x100_handle = (const X100_native_handle_t *)layer->handle;
+       if (1) {
+            buf->width=x100_handle->iWidth;
+	        buf->height=x100_handle->iHeight;
+            getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+            if (! buf->xpicture) {
+                delete buf;
+                return NULL;
             }
         } else {
-            ret = create_shm_wl_buffer(pdev->display, buf, cros_handle->iWidth, cros_handle->iHeight, cros_handle->iFormat, pixel_stride, layer->handle);
+            ret = create_shm_wl_buffer(pdev->display, buf, x100_handle->iWidth, x100_handle->iHeight, x100_handle->iFormat, pixel_stride, layer->handle);
             if (ret != 0 ) {
                 ALOGE("x100 create shm wl buffer failed");
             }
@@ -442,7 +465,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	    buf->width=gc_handle->width;
 	    buf->height=gc_handle->height;
 	if (1) {
-            getXRenderPicture(pdev, layer, window, buf);
+            getXRenderPicture(pdev, layer, window, buf,pixel_stride);
             if (! buf->xpicture) {
                 delete buf;
                 return NULL;
