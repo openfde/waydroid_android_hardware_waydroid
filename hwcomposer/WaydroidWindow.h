@@ -34,7 +34,7 @@ using ::android::sp;
 
 struct WaydroidWindow : public V1_2::IWaydroidWindow {
   public:
-    WaydroidWindow(struct display *display);
+    WaydroidWindow(struct display *display, std::map<std::string, struct window *> *windows);
     // Methods from ::vendor::waydroid::window::V1_0::IWaydroidWindow follow.
     Return<bool> minimize(const hidl_string& packageName) override;
 
@@ -45,6 +45,7 @@ struct WaydroidWindow : public V1_2::IWaydroidWindow {
     Return<void> setIdleInhibit(const hidl_string& packageName, bool enabled) override;
   private:
     struct display *mDisplay;
+    std::map<std::string, struct window *> *mWindows;
 };
 
 }  // namespace vendor::waydroid::window::implementation

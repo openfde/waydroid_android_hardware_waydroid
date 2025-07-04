@@ -1566,7 +1566,7 @@ static void* hwc_window_service_thread(void* data) {
     sp<IWaydroidWindow> waydroidWindow;
     status_t status;
 
-    waydroidWindow = new WaydroidWindow(pdev->display);
+    waydroidWindow = new WaydroidWindow(pdev->display, &pdev->windows);
     if (waydroidWindow == nullptr) {
         ALOGE("Can not create an instance of Waydroid Window HAL, exiting.");
         goto shutdown;

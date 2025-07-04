@@ -28,8 +28,8 @@
 
 namespace vendor::waydroid::window::implementation {
 
-WaydroidWindow::WaydroidWindow(struct display *display)
-    : mDisplay(display)
+WaydroidWindow::WaydroidWindow(struct display *display, std::map<std::string, struct window *> *windows)
+    : mDisplay(display),mWindows(windows)
 {
 }
 
@@ -41,6 +41,11 @@ WaydroidWindow::WaydroidWindow(struct display *display)
 
 // Methods from ::vendor::waydroid::window::V1_0::IWaydroidWindow follow.
 Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
+    ALOGE("WaydroidWindow minimize packageName %s", packageName.c_str());
+
+    if(!mWindows || mWindows->size() < 1)
+        return false;
+
     char property[PROPERTY_VALUE_MAX];
 
    if (!mDisplay->xcbconnection)
@@ -51,9 +56,10 @@ Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
         return false;
 
     std::scoped_lock lock(mDisplay->windowsMutex);
-    for (auto it = mDisplay->windows.begin(); it != mDisplay->windows.end(); it++) {
+    for (auto it = mWindows->begin(); it != mWindows->end(); it++) {
         struct window* window = it->second;
         if (window && window->appID == packageName) {
+           ALOGE("minimize window->appID: %s ", window->appID.c_str());
            xcb_intern_atom_cookie_t wm_change_state_cookie = xcb_intern_atom(mDisplay->xcbconnection, 0, strlen("WM_CHANGE_STATE"), "WM_CHANGE_STATE");
             xcb_intern_atom_reply_t *wm_change_state_atom = xcb_intern_atom_reply(mDisplay->xcbconnection, wm_change_state_cookie, NULL);
 
@@ -78,7 +84,7 @@ Return<bool> WaydroidWindow::minimize(const hidl_string& packageName) {
             return true;
         }
     }
-    return false;
+    return true;
 }
 
 // Methods from ::vendor::waydroid::window::V1_1::IWaydroidWindow follow.
