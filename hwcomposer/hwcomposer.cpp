@@ -27,6 +27,7 @@
 #include <string>
 #include <sstream>
 #include <functional>
+#include <algorithm>
 
 #include <log/log.h>
 #include <cutils/properties.h>
@@ -274,6 +275,23 @@ static void * swaprb(struct waydroid_hwc_composer_device_1 *pdev, sp<android::Gr
 	return (void *)dst_gb->getNativeBuffer()->handle;
 }
 
+static void rgb565_to_rgba8888(uint32_t *dst_rgba, uint16_t *src_rgb565, int width, int height, int stride_rgb565, int stride_rgba8888) {
+    for (int y = 0; y < height; y++) {
+        uint16_t *src_row = (uint16_t*)(src_rgb565 + y * stride_rgb565);
+        uint32_t *dst_row = (uint32_t*)(dst_rgba + y * stride_rgba8888);
+        for (int x = 0; x < width; x++) {
+            uint16_t rgb565 = src_row[x];
+            uint8_t r = (rgb565 >> 11) & 0x1F;
+            uint8_t g = (rgb565 >> 5)  & 0x3F;
+            uint8_t b = rgb565 & 0x1F;
+            r = (r << 3) | (r >> 2);
+            g = (g << 2) | (g >> 4);
+            b = (b << 3) | (b >> 2);
+            dst_row[x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+        }
+    }
+}
+
 static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf, int pixel_stride) {
 	int width,height, stride, format, prime_fd;
 	int usage = GRALLOC_USAGE_HW_TEXTURE;
@@ -348,14 +366,72 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
         buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
         XRenderPictureAttributes pa;
         pa.repeat = False;
-        xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
-            width * height * 4,width, height,stride, 32,32,x11_fd);
-        xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-        if (pixmap_error) {
-            ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
-            free(pixmap_error);
-            close(x11_fd);
-            return ;
+        if (format == HAL_PIXEL_FORMAT_RGB_565) {
+            sp<android::GraphicBuffer> RGBA8888_gb = new android::GraphicBuffer(width, height,
+                HAL_PIXEL_FORMAT_RGBA_8888, 1, GRALLOC_USAGE_HW_COMPOSER |
+                GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_SW_WRITE_OFTEN, std::string("RGBA8888_gb") + std::to_string(getpid()));
+            if (RGBA8888_gb->initCheck() != android::NO_ERROR) {
+                ALOGE("Failed to create RGBA8888_gb");
+                return;
+            }
+
+            sp<android::GraphicBuffer> gb_for_stride = new android::GraphicBuffer(width, height,
+                HAL_PIXEL_FORMAT_RGB_565, 1, GRALLOC_USAGE_HW_COMPOSER |
+                GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_SW_WRITE_OFTEN, std::string("gb_for_stride") + std::to_string(getpid()));
+            if (gb_for_stride->initCheck() != android::NO_ERROR) {
+                ALOGE("Failed to create gb_for_stride");
+                return;
+            }
+
+            sp<android::GraphicBuffer> RGB565_gb = new android::GraphicBuffer(
+                (const native_handle_t *)layer->handle, android::GraphicBuffer::WRAP_HANDLE,
+                width, height, format, 1, (uint64_t)usage, gb_for_stride->getStride());
+            if (RGB565_gb->initCheck() != android::NO_ERROR) {
+               ALOGE("Failed to create RGB565_gb");
+               return;
+            }
+
+            void* RGB565_vaddr;
+            void* RGBA8888_vaddr;
+            int32_t outBytesPerPixel, outBytesPerStride;
+            RGB565_gb->lock(GRALLOC_USAGE_SW_READ_OFTEN, &RGB565_vaddr, &outBytesPerPixel, &outBytesPerStride);
+            RGBA8888_gb->lock(GRALLOC_USAGE_SW_WRITE_OFTEN, &RGBA8888_vaddr, &outBytesPerPixel, &outBytesPerStride);
+            if (RGB565_vaddr == 0) {
+                ALOGE("RGB565_vaddr null");
+                return;
+            }
+            if (RGBA8888_vaddr == 0) {
+                ALOGE("RGBA8888_vaddr null");
+                return;
+            }
+
+            uint32_t *RGBA8888_pix = (uint32_t *)RGBA8888_vaddr;
+            uint16_t *RGB565_pix = (uint16_t *)RGB565_vaddr;
+            rgb565_to_rgba8888(RGBA8888_pix, RGB565_pix, RGBA8888_gb->getWidth(), RGBA8888_gb->getHeight(), RGB565_gb->getStride(), RGBA8888_gb->getStride());
+            RGBA8888_gb->unlock();
+            RGB565_gb->unlock();
+
+            struct gralloc_handle_t *RGBA8888_handle = (struct gralloc_handle_t *)RGBA8888_gb->handle;
+            xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection, buf->xcbpixmap, xcbwindow,
+                RGBA8888_gb->getStride() * RGBA8888_gb->getHeight() * 4, RGBA8888_gb->getWidth(), RGBA8888_gb->getHeight(),
+                RGBA8888_gb->getStride() * 4, 32, 32, RGBA8888_handle->prime_fd);
+
+            xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+            if (pixmap_error) {
+                ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+                free(pixmap_error);
+                return;
+            }
+        } else {
+            xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
+                buf->xcbpixmap, xcbwindow, width * height * 4,width, height, stride, 32, 32, x11_fd);
+            xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+            if (pixmap_error) {
+               ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+               free(pixmap_error);
+               close(x11_fd);
+               return ;
+            }
         }
         buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
         close(x11_fd);
