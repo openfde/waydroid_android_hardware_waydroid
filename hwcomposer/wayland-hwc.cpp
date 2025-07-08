@@ -1506,7 +1506,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         free(state_reply);
     }
     }
-	if (use_subsurface) {
+	if (use_subsurfaces) {
 		xcb_shape_rectangles(display->xcbconnection,
 		XCB_SHAPE_SO_SET,        // 设置操作（替换现有形状）
 		XCB_SHAPE_SK_INPUT,
