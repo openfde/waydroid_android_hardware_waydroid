@@ -152,8 +152,7 @@ static const char* fragment_shader_source =
     "in vec2 TexCoord;\n"
     "uniform sampler2D ourTexture;\n"
     "void main() {\n"
-    "    vec4 color = texture(ourTexture, TexCoord);\n"
-    "    FragColor = vec4(color.b, color.g, color.r, color.a);\n"
+    "    FragColor = texture(ourTexture, TexCoord);\n"
     "}\0";
 
 // 编译着色器
@@ -200,8 +199,7 @@ static GLuint create_shader_program() {
     return shaderProgram;
 }
 
-
-void egl_convert_buffer_rb_swap(struct display* display, android::sp<android::GraphicBuffer> src_buffer, android::sp<android::GraphicBuffer> dst_buffer) {
+void egl_convert_buffer_to_BGRA_8888(struct display* display, android::sp<android::GraphicBuffer> src_buffer, android::sp<android::GraphicBuffer> dst_buffer) {
     static GLuint shader_program = 0;
     static GLuint VAO = 0, VBO = 0, EBO = 0;
     static int gl_initialized = 0;
