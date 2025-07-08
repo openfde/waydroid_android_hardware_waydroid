@@ -98,15 +98,16 @@ int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t ma
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
 //static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
-static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
+/*static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
     auto it = pdev->display->buffer_map.find(handle);
     if (it != pdev->display->buffer_map.end()) {
         destroy_buffer(pdev->display,it->second);
         pdev->display->buffer_map.erase(it);
     }
 }
+*/
 
-static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
+/*static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
     // if (!pdev->display->cursor_surface) {
     //     return false;
     // }
@@ -119,12 +120,13 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
 
     fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing hide internal cursor
 
+    */
     /*
      * To update the wayland cursor, the fde.mouse_icon_addr system property was introduced.
      * When the internal mouse shape changes, its value will change accordingly.
      * Its value is set by SpriteController and PointerController.
      */
-    int64_t mouse_icon_addr = property_get_int64("fde.mouse_icon_addr", 0);
+    /*int64_t mouse_icon_addr = property_get_int64("fde.mouse_icon_addr", 0);
     if (pdev->display->mouse_icon_addr != mouse_icon_addr) {
         pdev->display->mouse_icon_addr = mouse_icon_addr;
         pdev->display->additional_refresh_cursor_times = 0;
@@ -164,6 +166,7 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
 
     return true;
 }
+*/
 
 static int hwc_prepare(hwc_composer_device_1_t* dev,
                        size_t numDisplays, hwc_display_contents_1_t** displays) {
@@ -212,7 +215,7 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
             (pdev->use_subsurface ? HWC_FRAMEBUFFER : HWC_OVERLAY))
             fb_layer->compositionType =
                 (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER);
-        foundCursorLayer |= update_cursor_surface(pdev, fb_layer, i);
+        //foundCursorLayer |= update_cursor_surface(pdev, fb_layer, i);
     }
     if(!foundCursorLayer && pdev->display->mouse_icon_addr != -1){
         // wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
@@ -561,6 +564,30 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 	*/
     }
 
+    xcb_rectangle_t rects[1];
+    rects[0] = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
+    //ALOG("gy set region layer_%d x%d y%d w%d h%d %d %d" ,window->lastLayer, values.x,values.y, dst_width, dst_height,src_x,src_y);
+    if (use_subsurface) {
+	    if (window->lastLayer == 0) {
+		// 清空输入形状，设置为空矩形数组
+		xcb_shape_rectangles(pdev->display->xcbconnection,
+				 XCB_SHAPE_SO_SET,        // 设置操作（替换现有形状）
+				 XCB_SHAPE_SK_INPUT,
+				 XCB_CLIP_ORDERING_UNSORTED,
+				 window->xcbwindow,
+				 0, 0, 1, rects);          // 0个矩形，NULL数组
+	    }else {
+
+	    // 后续调用 - 与现有形状合并
+	    xcb_shape_rectangles(pdev->display->xcbconnection,
+			     XCB_SHAPE_SO_UNION,      // 合并操作
+			     XCB_SHAPE_SK_INPUT,
+			     XCB_CLIP_ORDERING_UNSORTED,
+			     window->xcbwindow,
+			     0, 0, 1, rects);
+	    }
+    }
+
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                    src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
 
@@ -749,14 +776,13 @@ void get_input_shape(xcb_connection_t *conn, xcb_window_t window) {
         return;
     }
 
-    //int num_rects = xcb_shape_get_rectangles_rectangles_length(reply);
-    //xcb_rectangle_t *rects = xcb_shape_get_rectangles_rectangles(reply);
-    /*ALOGE("hwc_set Current input shape (%d rectangles):\n", num_rects);
+    int num_rects = xcb_shape_get_rectangles_rectangles_length(reply);
+    xcb_rectangle_t *rects = xcb_shape_get_rectangles_rectangles(reply);
+    ALOGE("hwc_set Current input shape (%d rectangles):\n", num_rects);
     for (int i = 0; i < num_rects; i++) {
         ALOGE("  hwc_set rectangle %d: x=%d, y=%d, width=%u, height=%u\n",
                i, rects[i].x, rects[i].y, rects[i].width, rects[i].height);
     }
-    */
 
     free(reply);
 }
@@ -1127,7 +1153,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             //         }
             //     }
             // }
-            if (LayerRawName == "InputMethod") {
+            /*if (LayerRawName == "InputMethod") {
                 if (pdev->windows.find(LayerRawName) == pdev->windows.end()) {
                     pdev->windows[LayerRawName] = create_window(pdev->display, pdev->use_subsurface, LayerRawName, "none", {0, 0, 0, 0});
                     std::string windows_size_str = std::to_string(pdev->windows.size());
@@ -1136,6 +1162,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 if (pdev->windows.find(LayerRawName) != pdev->windows.end())
                     window = pdev->windows[LayerRawName];
             }
+	    */
         }
 
         if (!window || !window->isActive) {
@@ -1297,7 +1324,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
     }
 
     //Merge subwindow input rectangle
-    for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
+    /*for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
         int size = 0;
         for (size_t l = 0; l < contents->numHwLayers; l++) {
             size_t layer = l;
@@ -1332,12 +1359,13 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         }
         xcb_shape_rectangles(pdev->display->xcbconnection, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_INPUT,XCB_CLIP_ORDERING_UNSORTED, it->second->xcbwindow, 0, 0,size, rects);
         get_input_shape(pdev->display->xcbconnection, it->second->xcbwindow);
-    }    
+    }    */
     
     // Layers order is changed from SF so we rearrange wayland surfaces
      if (pdev->use_subsurface)
          for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
              if (it->second){
+        	get_input_shape(pdev->display->xcbconnection, it->second->xcbwindow);
 	     XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
 		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
                  //wl_surface_commit(it->second->surface);
