@@ -1324,6 +1324,15 @@ void *event_loop_thread(void *arg) {
         do {
             ALOGD("Processing event: type=%d", event->response_type & ~0x80);
             switch (event->response_type & ~0x80) {
+                case XCB_FOCUS_OUT:{
+                    ALOGE("Focus lost, releasing all keys");
+                    for (size_t i = 0; i < display->keysDown.size(); i++) {
+                        if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
+                            send_key_event(display, i, WL_KEYBOARD_KEY_STATE_RELEASED);
+                        }
+                    }
+                    break;
+                }
                 case XCB_CLIENT_MESSAGE: {
                     ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
                     break;
@@ -1473,7 +1482,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         0,  // 设置不透明的黑色背景，避免窗口透明
         0,
         XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
-        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_STRUCTURE_NOTIFY,
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_FOCUS_CHANGE,
         display->colormap
     };
 
