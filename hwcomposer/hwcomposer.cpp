@@ -537,8 +537,8 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     // Calculate source crop dimensions
     int src_x = fmax(0, sourceCrop.left);
     int src_y = fmax(0, sourceCrop.top);
-    int src_width = fmax(1, sourceCrop.right - sourceCrop.left);
-    int src_height = fmax(1, sourceCrop.bottom - sourceCrop.top);
+    //int src_width = fmax(1, sourceCrop.right - sourceCrop.left);
+    //int src_height = fmax(1, sourceCrop.bottom - sourceCrop.top);
 
     // Calculate destination dimensions (scaled)
     int dst_width = fmax(1, ceil((layer->displayFrame.right - layer->displayFrame.left) / pdev->display->scale));
