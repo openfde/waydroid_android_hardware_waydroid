@@ -1144,7 +1144,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     window = pdev->windows[LayerRawName];
             }
 	    */
-	        if (pdev->multi_windows && (LayerRawName == "Toast")) {
+	        if (pdev->multi_windows && ((LayerRawName == "Toast")
+	            || (LayerRawName.find("Application Not Responding:") !=  std::string::npos))) {
                 if (pdev->windows.find(LayerRawName) == pdev->windows.end()) {
                     pdev->windows[LayerRawName] = create_window(pdev->display, pdev->use_subsurface, LayerRawName, "none", {0, 0, 0, 0});
                     std::string windows_size_str = std::to_string(pdev->windows.size());
