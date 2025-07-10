@@ -277,6 +277,8 @@ typedef struct {
 struct window {
     struct display *display;
     xcb_window_t xcbwindow;
+    xcb_atom_t wm_protocols;
+    xcb_atom_t wm_delete_window;
     xcb_gcontext_t xcbgc;
     Picture xpicture;
     Picture backxpicture;

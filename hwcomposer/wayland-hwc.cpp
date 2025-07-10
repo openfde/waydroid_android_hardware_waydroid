@@ -1364,7 +1364,26 @@ void *event_loop_thread(void *arg) {
                     break;
                 }
                 case XCB_CLIENT_MESSAGE: {
-                    ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
+                    xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
+                    ALOGE("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
+                    xcb_window_t focused_win = cm ->window;
+                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                        ALOGE("Task : %s", it->first.c_str());
+                        if (it->second->xcbwindow == focused_win){
+                            ALOGE("it->second->wm_protocols: %d, it->second->wm_delete_window: %d", 
+                                it->second->wm_protocols, it->second->wm_delete_window);
+                            if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
+                                if (display->task != nullptr) {
+                                    if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                        ALOGE("remove task %s", it->first.c_str());
+                                        display->task->removeTask(stoi(it->first));
+                                    }else{
+                                        ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
                     break;
                 }
                 case XCB_KEY_PRESS:
@@ -1590,6 +1609,8 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     if(wm_protocols_reply || wm_delete_reply){
         xcb_atom_t wm_protocols = wm_protocols_reply->atom;
         xcb_atom_t wm_delete_window = wm_delete_reply->atom;
+        window->wm_protocols = wm_protocols;
+        window->wm_delete_window = wm_delete_window;
         free(wm_protocols_reply);
         free(wm_delete_reply);
 
