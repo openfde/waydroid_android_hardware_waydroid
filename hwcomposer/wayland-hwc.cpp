@@ -1183,7 +1183,7 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
     if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
         ALOGE("on_button_release %d", xcb_button_event->detail);
         uint32_t axis = 0;
-        int value = (xcb_button_event->detail == XCB_BUTTON_INDEX_4) ? 2560 : -2560;
+        int value = (xcb_button_event->detail == XCB_BUTTON_INDEX_4) ? -2560 : 2560;
         display->wheelEvtIsDiscrete = true;
         x11_pointer_handle_axis(data, axis, value);
         return;
@@ -1324,6 +1324,22 @@ void *event_loop_thread(void *arg) {
         do {
             ALOGD("Processing event: type=%d", event->response_type & ~0x80);
             switch (event->response_type & ~0x80) {
+                case XCB_FOCUS_IN:{
+                    xcb_focus_in_event_t *focus = (xcb_focus_in_event_t *)event;
+                    xcb_window_t focused_win = focus->event;
+                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                        ALOGE("Task : %s", it->first.c_str());
+                        if (it->second->xcbwindow == focused_win){
+                            ALOGE("Task %s gained focus", it->first.c_str());
+                            if (display->task != nullptr) {
+                                if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                    display->task->setFocusedTask(stoi(it->first));
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
                 case XCB_FOCUS_OUT:{
                     ALOGE("Focus lost, releasing all keys");
                     for (size_t i = 0; i < display->keysDown.size(); i++) {

@@ -1719,6 +1719,8 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     if (!pdev->display) {
         ALOGE("failed to open wayland connection");
         return -ENODEV;
+    }else{
+        pdev->display->x11_windows = &pdev->windows;
     }
     ALOGE("wayland display %p", pdev->display);
     pdev->display->mouse_icon_addr = -1;
