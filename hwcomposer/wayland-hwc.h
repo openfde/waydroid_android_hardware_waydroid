@@ -156,6 +156,7 @@ struct display {
     bool isTouchDown;
     bool isMouseLeftDown;
     int axisY;
+    int64_t lastMouseLeftDownNanoSeconds;
     int axisX;
     int64_t lastAxisEventNanoSeconds;
     int touch_id[MAX_TOUCHPOINTS];

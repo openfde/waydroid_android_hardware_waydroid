@@ -1136,7 +1136,21 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
 
     // Left button convert to touch event, right button reserved mouse event
     if(((xcb_button_event->detail == 1 && property_get_bool("fde.click_as_touch", false)) || display->isTouchDown) && !display->isMouseLeftDown) {
-	      // convert pointer event to touch event
+        struct timespec rt;
+        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+            ALOGE("%s:%d error in touch clock_gettime: %s",
+                   __FILE__, __LINE__, strerror(errno));
+        }else {
+		int64_t nanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
+		if (nanoSeconds - display->lastMouseLeftDownNanoSeconds   < 200 * 1000 * 1000) {
+		    // If the time between two left button clicks is less than 200ms, drop the second click to avoid the launcher task being set to the frontest 
+		    ALOGI("on_button_press: double click detected in less than 200ms");
+		    return;
+		}else {
+		    display->lastMouseLeftDownNanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
+		}
+	}
+      // convert pointer event to touch event
         pointer_handle_button_to_touch_down(display);
     }else{
         struct input_event event[2];
@@ -1236,10 +1250,10 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
 
 void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
     struct display* display = (struct display*)data;
-    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
-    ALOGE("x11 mouse move: position=(%d, %d)\n",
-           event->event_x, event->event_y);
-    ALOGE("鼠标移动: 窗口坐标 (%d, %d) -> 屏幕坐标 (%d, %d)\n", event->event_x, event->event_y, event->root_x, event->root_y);
+    //ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+    //ALOGE("x11 mouse move: position=(%d, %d)\n",
+     //      event->event_x, event->event_y);
+    //ALOGE("鼠标移动: 窗口坐标 (%d, %d) -> 屏幕坐标 (%d, %d)\n", event->event_x, event->event_y, event->root_x, event->root_y);
     if(display->axis_simulation_two_finger_started){
         pointer_cancel_axis_to_two_finger_touch(display);
     }
