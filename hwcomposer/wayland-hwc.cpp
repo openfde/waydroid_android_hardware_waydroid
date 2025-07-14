@@ -1447,21 +1447,6 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
 
     bool calibrating = !display->height || !display->width;
 
-    // if (display->wm_base) {
-    //     window->xdg_surface =
-    //             xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
-    //     assert(window->xdg_surface);
-
-    //     xdg_surface_add_listener(window->xdg_surface,
-    //                                  &xdg_surface_listener, window);
-
-    //     window->xdg_toplevel = xdg_surface_get_toplevel(window->xdg_surface);
-    //     assert(window->xdg_toplevel);
-    //     xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window);
-    //     if (display->isMaximized || !display->height || !display->width) {
-    //         xdg_toplevel_set_fullscreen(window->xdg_toplevel,NULL);
-    //         xdg_toplevel_set_maximized(window->xdg_toplevel);
-	//      }   
         const hidl_string appID_hidl(appID);
         hidl_string appName_hidl(appID);
 	//rename the appid to Openfde to match the desktop file name openfde.desktop 
@@ -1631,7 +1616,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         strlen(appID_title.c_str()),
         appID_title.c_str()
     );
-    ALOGE("gy xcreate xcb window %s color %d",appID_title.c_str(),color.a);
+    ALOGE("gy xcreate xcb window %s color %d, width %d height %d",appID_title.c_str(),color.a, display->width,display->height);
 
 /*
     window->xcbgc = xcb_generate_id(display->xcbconnection);
@@ -1760,31 +1745,11 @@ create_display(const char *gralloc)
     display->lastAxisEventNanoSeconds = 0;
     display->gesture_scale = 260;
       // Get screen resolution and scale
+    display->scale = 1;
     display->full_width = display->xcbscreen->width_in_pixels;
     display->full_height = display->xcbscreen->height_in_pixels;
     ALOGE("pixels width %d height %d",display->xcbscreen->width_in_pixels, display->xcbscreen->height_in_pixels);
 
-    // Get scale factor from X11 resources or Xft.dpi
-    int screen_mm_width = display->xcbscreen->width_in_millimeters;
-    int screen_mm_height = display->xcbscreen->height_in_millimeters;
-    ALOGE("millimeters width %d height %d",display->xcbscreen->width_in_millimeters, display->xcbscreen->height_in_millimeters);
-
-    if (screen_mm_width > 0 && screen_mm_height > 0) {
-        // Calculate DPI
-        double dpi_x = (double)display->full_width * 25.4 / screen_mm_width;
-        double dpi_y = (double)display->full_height * 25.4 / screen_mm_height;
-        double avg_dpi = (dpi_x + dpi_y) / 2.0;
-
-        // Calculate scale factor based on DPI (96 DPI is considered scale 1.0)
-        display->scale = avg_dpi / 96.0;
-
-        // Clamp scale to reasonable values
-        if (display->scale < 1.0) display->scale = 1.0;
-        if (display->scale > 3.0) display->scale = 3.0;
-	ALOGE("finanl scale%f",display->scale);
-    } else {
-        display->scale = 1.0;
-    }
     display->width = display->full_width /display->scale;
     display->height = display->full_height /display->scale;
      struct display *d = (struct display*)display;

@@ -267,7 +267,7 @@ static void * produce_BGRA_8888(struct waydroid_hwc_composer_device_1 *pdev, sp<
 }
 
 static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf, int pixel_stride) {
-	int width,height, stride, format, prime_fd;
+	int width,height, stride, format, prime_fd, size;
 	int usage = GRALLOC_USAGE_HW_TEXTURE;
     if (pdev->display->gtype == GRALLOC_GBM) {
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
@@ -300,50 +300,51 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
         format = cros_handle->droid_format;
         prime_fd = cros_handle->fds[0];
     }
-    // Create destination GraphicBuffer for store HAL_PIXEL_FORMAT_BGRA_8888
-    sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
-       width, height, HAL_PIXEL_FORMAT_BGRA_8888,
-       GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER);
-    if (dst_gb->initCheck() != android::NO_ERROR) {
-        ALOGE("Failed to create destination GraphicBuffer");
-        return ;
-    }
 
-    sp<android::GraphicBuffer> gb_for_stride = new android::GraphicBuffer(width, height,
-        format, 1, GRALLOC_USAGE_HW_COMPOSER |
-        GRALLOC_USAGE_HW_TEXTURE, std::string("gb_for_stride") + std::to_string(getpid()));
-    if (gb_for_stride->initCheck() != android::NO_ERROR) {
-        ALOGE("Failed to create gb_for_stride");
-        return;
-    }
-
-    int stride_for_src_gb;
-    switch (format) {
-        case HAL_PIXEL_FORMAT_RGBA_8888:
-        case HAL_PIXEL_FORMAT_RGBX_8888:
-        case HAL_PIXEL_FORMAT_BGRA_8888:
-            stride_for_src_gb = gb_for_stride->getStride() * 4;
-            break;
-        case HAL_PIXEL_FORMAT_RGB_888:
-            stride_for_src_gb = gb_for_stride->getStride() * 3;
-            break;
-        case HAL_PIXEL_FORMAT_RGB_565:
-            stride_for_src_gb = gb_for_stride->getStride() * 2;
-            break;
-        default: //other formats need to test!!!
-            stride_for_src_gb = gb_for_stride->getStride();
-    }
-
-    // Create source GraphicBuffer from existing handle
-    sp<android::GraphicBuffer> src_gb = new android::GraphicBuffer(
-        (native_handle_t*)layer->handle, android::GraphicBuffer::WRAP_HANDLE,
-        width, height, format, 1, uint64_t(usage), stride_for_src_gb);
-    if (src_gb->initCheck() != android::NO_ERROR) {
-        ALOGE("Failed to create source GraphicBuffer from handle");
-        return ;
-    }
-
+	size = stride * height * 4;
     if (format != HAL_PIXEL_FORMAT_BGRA_8888) {
+	    // Create destination GraphicBuffer for store HAL_PIXEL_FORMAT_BGRA_8888
+	    sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
+	       width, height, HAL_PIXEL_FORMAT_BGRA_8888,
+	       GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER);
+	    if (dst_gb->initCheck() != android::NO_ERROR) {
+		ALOGE("Failed to create destination GraphicBuffer");
+		return ;
+	    }
+
+	    sp<android::GraphicBuffer> gb_for_stride = new android::GraphicBuffer(width, height,
+		format, 1, GRALLOC_USAGE_HW_COMPOSER |
+		GRALLOC_USAGE_HW_TEXTURE, std::string("gb_for_stride") + std::to_string(getpid()));
+	    if (gb_for_stride->initCheck() != android::NO_ERROR) {
+		ALOGE("Failed to create gb_for_stride");
+		return;
+	    }
+
+	    int stride_for_src_gb;
+	    switch (format) {
+		case HAL_PIXEL_FORMAT_RGBA_8888:
+		case HAL_PIXEL_FORMAT_RGBX_8888:
+		case HAL_PIXEL_FORMAT_BGRA_8888:
+		    stride_for_src_gb = gb_for_stride->getStride() * 4;
+		    break;
+		case HAL_PIXEL_FORMAT_RGB_888:
+		    stride_for_src_gb = gb_for_stride->getStride() * 3;
+		    break;
+		case HAL_PIXEL_FORMAT_RGB_565:
+		    stride_for_src_gb = gb_for_stride->getStride() * 2;
+		    break;
+		default: //other formats need to test!!!
+		    stride_for_src_gb = gb_for_stride->getStride();
+	    }
+
+	    // Create source GraphicBuffer from existing handle
+	    sp<android::GraphicBuffer> src_gb = new android::GraphicBuffer(
+		(native_handle_t*)layer->handle, android::GraphicBuffer::WRAP_HANDLE,
+		width, height, format, 1, uint64_t(usage), stride_for_src_gb);
+	    if (src_gb->initCheck() != android::NO_ERROR) {
+		ALOGE("Failed to create source GraphicBuffer from handle");
+		return ;
+	    }
         if (!produce_BGRA_8888(pdev, src_gb, dst_gb)) {
             ALOGE("produce_BGRA_8888 failed");
             return ;
@@ -351,7 +352,9 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
         const native_handle_t* native_handle = dst_gb->getNativeBuffer()->handle;
         struct gralloc_handle_t * drm_handle = (struct gralloc_handle_t*)native_handle;
         prime_fd = drm_handle->prime_fd;
-	}
+	size = dst_gb->getStride() * height * 4;
+	stride = dst_gb->getStride() * 4 ;
+    }
     if (window != NULL ) {
         xcb_window_t xcbwindow = window->xcbwindow;
         int x11_fd = dup(prime_fd);
@@ -366,7 +369,7 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
         XRenderPictureAttributes pa;
         pa.repeat = False;
         xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
-            buf->xcbpixmap, xcbwindow, dst_gb->getStride() * height * 4, width, height, dst_gb->getStride() * 4, 32, 32, x11_fd);
+            buf->xcbpixmap, xcbwindow, size, width, height, stride, 32, 32, x11_fd);
         xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
         if (pixmap_error) {
            ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
@@ -531,7 +534,6 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     xcb_configure_window_value_list_t values;
     values.x = floor(layer->displayFrame.left / pdev->display->scale);
     values.y = floor(layer->displayFrame.top / pdev->display->scale);
-    //ALOGE("move layer=%d to x %d y %d", window->lastLayer,values.x,values.y);
     // uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
    //xcb_configure_window(pdev->display->xcbconnection, window->xcbwindow, mask, (uint32_t*)&values);
     // Calculate source crop dimensions
@@ -543,6 +545,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     // Calculate destination dimensions (scaled)
     int dst_width = fmax(1, ceil((layer->displayFrame.right - layer->displayFrame.left) / pdev->display->scale));
     int dst_height = fmax(1, ceil((layer->displayFrame.bottom - layer->displayFrame.top) / pdev->display->scale));
+
 
     xcb_rectangle_t rects[1];
     rects[0] = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
@@ -568,7 +571,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     }
 
     if (0)
-	ALOGE("src %d%d", src_x,src_y);
+	ALOGE("src x %d y%d dst width %d dst height %d", src_x,src_y, dst_width, dst_height);
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                   src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
 
