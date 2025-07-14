@@ -833,7 +833,11 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
      */
     property_get("waydroid.active_apps", property, "none");
     std::string active_apps = std::string(property);
-    property_get("waydroid.blacklist_apps", property, "com.android.launcher3");
+    std::string blacklist_apps = std::string("com.android.launcher3");
+    property_get("waydroid.blacklist_apps", property, "");
+    if (strlen(property) > 0 && strncmp(property, "com.android.launcher3", strlen("com.android.launcher3")) != 0) {
+        blacklist_apps = blacklist_apps + ":" + std::string(property);
+    }
     std::string blacklist_apps = std::string(property);
     std::string single_layer_tid;
     std::string single_layer_aid;
