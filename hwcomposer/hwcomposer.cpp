@@ -302,16 +302,16 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
     }
 
 	size = stride * height * 4;
+    // Create destination GraphicBuffer for store HAL_PIXEL_FORMAT_BGRA_8888
+    sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
+       width, height, HAL_PIXEL_FORMAT_BGRA_8888,
+       GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER);
+    if (dst_gb->initCheck() != android::NO_ERROR) {
+	ALOGE("Failed to create destination GraphicBuffer");
+	return ;
+    }
     if (format != HAL_PIXEL_FORMAT_BGRA_8888) {
-	    // Create destination GraphicBuffer for store HAL_PIXEL_FORMAT_BGRA_8888
-	    sp<android::GraphicBuffer> dst_gb = new android::GraphicBuffer(
-	       width, height, HAL_PIXEL_FORMAT_BGRA_8888,
-	       GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER);
-	    if (dst_gb->initCheck() != android::NO_ERROR) {
-		ALOGE("Failed to create destination GraphicBuffer");
-		return ;
-	    }
-
+	    ALOGE("format not equal BGRA_8888");
 	    sp<android::GraphicBuffer> gb_for_stride = new android::GraphicBuffer(width, height,
 		format, 1, GRALLOC_USAGE_HW_COMPOSER |
 		GRALLOC_USAGE_HW_TEXTURE, std::string("gb_for_stride") + std::to_string(getpid()));
@@ -539,8 +539,8 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     // Calculate source crop dimensions
     int src_x = fmax(0, sourceCrop.left);
     int src_y = fmax(0, sourceCrop.top);
-    //int src_width = fmax(1, sourceCrop.right - sourceCrop.left);
-    //int src_height = fmax(1, sourceCrop.bottom - sourceCrop.top);
+    int src_width = fmax(1, sourceCrop.right - sourceCrop.left);
+    int src_height = fmax(1, sourceCrop.bottom - sourceCrop.top);
 
     // Calculate destination dimensions (scaled)
     int dst_width = fmax(1, ceil((layer->displayFrame.right - layer->displayFrame.left) / pdev->display->scale));
@@ -548,6 +548,35 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 
 
     xcb_rectangle_t rects[1];
+     // Check if scaling is needed
+    if (src_width != dst_width || src_height != dst_height) {
+        // Set scale transform for the picture
+        XTransform scale_transform;
+        scale_transform.matrix[0][0] = XDoubleToFixed((double)src_width / dst_width);
+        scale_transform.matrix[0][1] = XDoubleToFixed(0.0);
+        scale_transform.matrix[0][2] = XDoubleToFixed(0.0);
+        scale_transform.matrix[1][0] = XDoubleToFixed(0.0);
+        scale_transform.matrix[1][1] = XDoubleToFixed((double)src_height / dst_height);
+        scale_transform.matrix[1][2] = XDoubleToFixed(0.0);
+        scale_transform.matrix[2][0] = XDoubleToFixed(0.0);
+        scale_transform.matrix[2][1] = XDoubleToFixed(0.0);
+        scale_transform.matrix[2][2] = XDoubleToFixed(1.0);
+        XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &scale_transform);
+    }else {
+        // Reset to identity transform when no scaling is needed
+        XTransform identity_transform;
+        identity_transform.matrix[0][0] = XDoubleToFixed(1.0);
+        identity_transform.matrix[0][1] = XDoubleToFixed(0.0);
+        identity_transform.matrix[0][2] = XDoubleToFixed(0.0);
+        identity_transform.matrix[1][0] = XDoubleToFixed(0.0);
+        identity_transform.matrix[1][1] = XDoubleToFixed(1.0);
+        identity_transform.matrix[1][2] = XDoubleToFixed(0.0);
+        identity_transform.matrix[2][0] = XDoubleToFixed(0.0);
+        identity_transform.matrix[2][1] = XDoubleToFixed(0.0);
+        identity_transform.matrix[2][2] = XDoubleToFixed(1.0);
+        XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &identity_transform);
+    }
+
     rects[0] = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
     if (use_subsurface) {
 	    if (window->lastLayer == 0) {
@@ -569,6 +598,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 			     0, 0, 1, rects);
 	    }
     }
+
 
     if (0)
 	ALOGE("src x %d y%d dst width %d dst height %d", src_x,src_y, dst_width, dst_height);
