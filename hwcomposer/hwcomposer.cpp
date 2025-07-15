@@ -311,7 +311,6 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
 	return ;
     }
     if (format != HAL_PIXEL_FORMAT_BGRA_8888) {
-	    ALOGE("format not equal BGRA_8888");
 	    sp<android::GraphicBuffer> gb_for_stride = new android::GraphicBuffer(width, height,
 		format, 1, GRALLOC_USAGE_HW_COMPOSER |
 		GRALLOC_USAGE_HW_TEXTURE, std::string("gb_for_stride") + std::to_string(getpid()));
@@ -345,17 +344,18 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
 		ALOGE("Failed to create source GraphicBuffer from handle");
 		return ;
 	    }
-        if (!produce_BGRA_8888(pdev, src_gb, dst_gb)) {
-            ALOGE("produce_BGRA_8888 failed");
-            return ;
-        }
-        const native_handle_t* native_handle = dst_gb->getNativeBuffer()->handle;
-        struct gralloc_handle_t * drm_handle = (struct gralloc_handle_t*)native_handle;
-        prime_fd = drm_handle->prime_fd;
-	size = dst_gb->getStride() * height * 4;
-	stride = dst_gb->getStride() * 4 ;
+            if (!produce_BGRA_8888(pdev, src_gb, dst_gb)) {
+                ALOGE("produce_BGRA_8888 failed");
+                return ;
+            }
+		const native_handle_t* native_handle = dst_gb->getNativeBuffer()->handle;
+		struct gralloc_handle_t * drm_handle = (struct gralloc_handle_t*)native_handle;
+		prime_fd = drm_handle->prime_fd;
+		size = dst_gb->getStride() * height * 4;
+		stride = dst_gb->getStride() * 4 ;
     }
     if (window != NULL ) {
+	//ALOGE("Found  app: %s layer  ,drop %d", window->appID.c_str(), lastlayer);
         xcb_window_t xcbwindow = window->xcbwindow;
         int x11_fd = dup(prime_fd);
         if (x11_fd >= 0) {
@@ -813,18 +813,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
     hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
     size_t fb_target = -1;
     int err = 0;
-    /*if ((contents->flags & HWC_GEOMETRY_CHANGED)) {
-        for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
-            if (it->second) {
-                // This window has no changes in layers, leaving it
-                if (!it->second->lastLayer)
-                    continue;
-		it->second->converted_prime_fds.clear();
-	    }
-   	 }
-    }
-    */
-
     if (pdev->display->geo_changed) {
         for (auto it = pdev->display->buffer_map.begin(); it != pdev->display->buffer_map.end(); it++) {
             if (it->second) {
