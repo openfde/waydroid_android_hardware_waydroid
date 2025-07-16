@@ -978,6 +978,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         for (auto it = pdev->windows.cbegin(); it != pdev->windows.cend();) {
             bool foundApp = false;
             for (size_t l = 0; l < contents->numHwLayers; l++) {
+		if (contents->hwLayers[l].compositionType != HWC_OVERLAY)
+			continue;
                 std::string layer_name = pdev->display->layer_names[l];
                 if (layer_name.substr(0, 4) == "TID:") {
                     std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
@@ -1037,6 +1039,15 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
 
         if (fb_layer->flags & HWC_SKIP_LAYER) {
+            if (fb_layer->acquireFenceFd != -1) {
+                close(fb_layer->acquireFenceFd);
+            }
+            continue;
+        }
+
+	//if ((fb_layer->flags & HWC_IS_CURSOR_LAYER) && pdev->display->cursor_surface) {
+	if (fb_layer->flags & HWC_IS_CURSOR_LAYER)  {
+            // Cursor was already handled separately
             if (fb_layer->acquireFenceFd != -1) {
                 close(fb_layer->acquireFenceFd);
             }
@@ -1112,6 +1123,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             std::string LayerRawName;
             std::istringstream issLayer(layer_name);
             std::getline(issLayer, LayerRawName, '#');
+             if (LayerRawName == "Sprite") {
+		 if (fb_layer->acquireFenceFd != -1) {
+		     close(fb_layer->acquireFenceFd);
+		 }
+		 continue;
+	     }
             // if (LayerRawName == "Sprite" && pdev->display->pointer_surface) {
             //     if (pdev->display->cursor_surface) {
             //         struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
@@ -1313,83 +1330,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         // if (!pdev->display->viewporter && pdev->display->scale > 1) {
         //     // With no viewporter the scale is guaranteed to be integer
         //     wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
-        // }
-	    // XTransform transform;
-        // switch (fb_layer->transform) {
-        //     case HWC_TRANSFORM_FLIP_V:
-        //         transform.matrix[0][0] = XDoubleToFixed(1.0);
-        //         transform.matrix[0][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[0][2] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][1] = XDoubleToFixed(-1.0); // scale y by -1
-        //         transform.matrix[1][2] = XDoubleToFixed(buf->height);
-        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
-        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-        //         break;
-        //     case HWC_TRANSFORM_ROT_90:
-        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[0][1] = XDoubleToFixed(-1.0);
-        //         transform.matrix[0][2] = XDoubleToFixed(buf->height);
-        //         transform.matrix[1][0] = XDoubleToFixed(1.0);
-        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][2] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
-        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-        //         break;
-        //     case HWC_TRANSFORM_ROT_180:
-        //         transform.matrix[0][0] = XDoubleToFixed(-1.0);
-        //         transform.matrix[0][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[0][2] = XDoubleToFixed(buf->width);
-        //         transform.matrix[1][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][1] = XDoubleToFixed(-1.0);
-        //         transform.matrix[1][2] = XDoubleToFixed(buf->height);
-        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
-        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-        //         break;
-        //     case HWC_TRANSFORM_ROT_270:
-        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[0][1] = XDoubleToFixed(1.0);
-        //         transform.matrix[0][2] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][0] = XDoubleToFixed(-1.0);
-        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][2] = XDoubleToFixed(buf->width);
-        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
-        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-        //         break;
-        //     case HWC_TRANSFORM_FLIP_H_ROT_90:
-        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[0][1] = XDoubleToFixed(1.0);
-        //         transform.matrix[0][2] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][0] = XDoubleToFixed(1.0);
-        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][2] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
-        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-        //         break;
-        //     case HWC_TRANSFORM_FLIP_V_ROT_90:
-        //         transform.matrix[0][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[0][1] = XDoubleToFixed(-1.0);
-        //         transform.matrix[0][2] = XDoubleToFixed(buf->height);
-        //         transform.matrix[1][0] = XDoubleToFixed(-1.0);
-        //         transform.matrix[1][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[1][2] = XDoubleToFixed(buf->width);
-        //         transform.matrix[2][0] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][1] = XDoubleToFixed(0.0);
-        //         transform.matrix[2][2] = XDoubleToFixed(1.0);
-        //         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-        //         break;
-        //     default:
-        //         break;
         // }
 
         // struct wp_presentation *pres = window->display->presentation;
