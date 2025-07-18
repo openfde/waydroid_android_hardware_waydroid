@@ -1313,6 +1313,16 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
     }
 }
 
+bool isValidInteger(const std::string& str) {
+    if (str.empty()) return false;
+    size_t pos = 0;
+    if (str[0] == '-' || str[0] == '+') pos = 1;
+    if (pos == str.size()) return false;
+    for (size_t i = pos; i < str.size(); ++i) {
+        if (!std::isdigit(str[i])) return false;
+    }
+    return true;
+}
 
 void *event_loop_thread(void *arg) {
     struct display* display = (struct display*)arg;
@@ -1347,7 +1357,9 @@ void *event_loop_thread(void *arg) {
                             ALOGE("Task %s gained focus", it->first.c_str());
                             if (display->task != nullptr) {
                                 if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
-                                    display->task->setFocusedTask(stoi(it->first));
+                                    if(isValidInteger(it->first)){
+                                        display->task->setFocusedTask(stoi(it->first));
+                                    }
                                 }
                             }
                         }
@@ -1376,7 +1388,9 @@ void *event_loop_thread(void *arg) {
                                 if (display->task != nullptr) {
                                     if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
                                         ALOGE("remove task %s", it->first.c_str());
-                                        display->task->removeTask(stoi(it->first));
+                                        if(isValidInteger(it->first)){
+                                            display->task->removeTask(stoi(it->first));
+                                        }
                                     }else{
                                         ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
                                     }
