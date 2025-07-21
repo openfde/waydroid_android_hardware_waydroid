@@ -516,6 +516,9 @@ destroy_window(struct window *window, bool keep)
         XRenderFreePicture(window->display->x11display, window->backxpicture);
         window->backxpicture = 0;
     }
+    if (!window->rects.empty()) {
+        window->rects.clear();
+    }
     if (window->backpixmap) {
         XFreePixmap(window->display->x11display, window->backpixmap);
         window->backpixmap = 0;

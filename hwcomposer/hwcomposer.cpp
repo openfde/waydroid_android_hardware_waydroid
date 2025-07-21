@@ -579,24 +579,12 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 
     rects[0] = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
     if (use_subsurface) {
-	    if (window->lastLayer == 0) {
-		// 清空输入形状，设置为空矩形数组
-		xcb_shape_rectangles(pdev->display->xcbconnection,
-				 XCB_SHAPE_SO_SET,        // 设置操作（替换现有形状）
-				 XCB_SHAPE_SK_INPUT,
-				 XCB_CLIP_ORDERING_UNSORTED,
-				 window->xcbwindow,
-				 0, 0, 1, rects);          // 0个矩形，NULL数组
-	    }else {
-
-	    // 后续调用 - 与现有形状合并
-	    xcb_shape_rectangles(pdev->display->xcbconnection,
-			     XCB_SHAPE_SO_UNION,      // 合并操作
-			     XCB_SHAPE_SK_INPUT,
-			     XCB_CLIP_ORDERING_UNSORTED,
-			     window->xcbwindow,
-			     0, 0, 1, rects);
-	    }
+	if (window->lastLayer == 0) {
+		window->rects.clear();
+	}
+        xcb_rectangle_t rect;
+        rect = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
+        window->rects.push_back(rect);
     }
 
 
@@ -1364,6 +1352,16 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         	//get_input_shape(pdev->display->xcbconnection, it->second->xcbwindow);
 	     	XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
 		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
+		if (!it->second->rects.empty()) {
+                    xcb_shape_rectangles(pdev->display->xcbconnection,
+                                        XCB_SHAPE_SO_SET,      // 设置操作
+                                        XCB_SHAPE_SK_INPUT,    // 输入形状
+                                        XCB_CLIP_ORDERING_UNSORTED,
+                                        it->second->xcbwindow,
+                                        0, 0,
+                                        it->second->rects.size(),
+                                        it->second->rects.data());
+                }
                 //wl_surface_commit(it->second->surface);
 	     }
     XFlush(pdev->display->x11display);

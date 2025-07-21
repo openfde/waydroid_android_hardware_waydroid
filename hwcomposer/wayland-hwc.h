@@ -284,6 +284,7 @@ struct window {
     Picture backxpicture;
     Pixmap backpixmap;
     int dri3_fd;
+    std::vector<xcb_rectangle_t> rects;
     
     struct wl_surface *surface;
     struct wp_viewport *viewport;
