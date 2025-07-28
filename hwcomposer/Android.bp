@@ -231,6 +231,56 @@ cc_prebuilt_library_shared {
     vendor: false,
 }
 
+cc_prebuilt_library_shared {
+    name: "libxcb-util",
+    arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
+        arm64: {
+            srcs: ["lib/libxcb-util.so"],
+        },
+    },
+    shared_libs: [
+        "libXau",
+        "libXdmcp",
+        "libxcb",
+    ],
+    proprietary: true,
+    vendor: false,
+}
+
+cc_prebuilt_library_shared {
+    name: "libxcb-imdkit",
+    arch: {
+        arm: {
+            enabled: false,
+        },
+        x86 : {
+            enabled : false,
+        },
+        x86_64 : {
+            enabled : false,
+        },
+        arm64: {
+            srcs: ["lib/libxcb-imdkit.so"],
+        },
+    },
+    shared_libs: [
+        "libXau",
+        "libXdmcp",
+        "libxcb",
+        "libxcb-util",
+    ],
+    proprietary: true,
+    vendor: false,
+}
 
 cc_library_shared {
     name: "hwcomposer.waydroid",
@@ -253,6 +303,8 @@ cc_library_shared {
         "libX11-xcb",
         "libXrender",
         "libxcb",
+        "libxcb-imdkit",
+        "libxcb-util",
         "libxcb-dri3",
         "libxcb-shape",
         "vendor.waydroid.display@1.0",
@@ -312,6 +364,7 @@ cc_library_shared {
         "-DLOG_TAG=\"hwcomposer\"",
         "-Wall",
         "-Werror",
+        "-Wno-writable-strings",
     ],
     generated_sources: ["wayland_android_client_protocol_sources"],
     generated_headers: ["wayland_android_client_protocol_headers"],

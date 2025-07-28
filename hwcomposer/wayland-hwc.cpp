@@ -82,6 +82,10 @@ const int AXIS_TOUCH_SLOT_ID = 8;
 const int AXIS_TOUCH_TRACKING_ID = AXIS_TOUCH_SLOT_ID;
 
 struct buffer;
+xcb_window_t w;
+xcb_xic_t ic;
+xcb_xim_t *im;
+struct display *localDisplay;
 
 static int find_argb_visual(struct display *display) ;
 void
@@ -893,7 +897,6 @@ typedef struct {
 } EventDispatcher;
 
 static EventDispatcher dispatcher = {0,0,0,0,0};
-static volatile bool running = true;
 
 void register_key_press_callback(KeyPressCallback cb) { dispatcher.key_press_cb = cb; }
 void register_key_release_callback(KeyReleaseCallback cb) { dispatcher.key_release_cb = cb; }
@@ -1328,119 +1331,220 @@ bool isValidInteger(const std::string& str) {
 }
 
 void *event_loop_thread(void *arg) {
+    ALOGE("input_loop_event start");
     struct display* display = (struct display*)arg;
     xcb_connection_t *connection = display->xcbconnection;
 
-    if (xcb_connection_has_error(connection)) {
-        ALOGE("XCB connection error: %d", xcb_connection_has_error(connection));
-        return NULL;
-    }
-
-    ALOGD("Starting XCB event loop");
-    while (running) {
-        xcb_generic_event_t *event = xcb_wait_for_event(connection);
+    xcb_generic_event_t *event;
+    while ((event = xcb_wait_for_event(connection))) {
         if (!event) {
             if (xcb_connection_has_error(connection)) {
                 ALOGE("XCB connection error: %d", xcb_connection_has_error(connection));
                 break;
             }
+            ALOGE("error event is null. ");
             continue;
         }
+        uint8_t event_type = event->response_type & ~0x80;
+        ALOGD("Processing event: type=%d", event_type);
+        if(im){
+            if (!xcb_xim_filter_event(im, event)) {
+                // Forward event to input method if IC is created.
+                if (ic && (((event->response_type & ~0x80) == XCB_KEY_PRESS) ||
+                           ((event->response_type & ~0x80) == XCB_KEY_RELEASE))) {
+                    xcb_xim_forward_event(im, ic, (xcb_key_press_event_t *)event);
+                    ALOGE("xcb_xim_forward_event called. ");
+                    free(event);
+                    continue;
+                }
+            }else{
+                ALOGE("event has been consumed by input method. ");
+                free(event);
+                continue;
+            }
+        }else{
+            ALOGE("error im is null. ");
+        }
 
-        int event_count = 0;
-        do {
-            ALOGD("Processing event: type=%d", event->response_type & ~0x80);
-            switch (event->response_type & ~0x80) {
-                case XCB_FOCUS_IN:{
-                    xcb_focus_in_event_t *focus = (xcb_focus_in_event_t *)event;
-                    xcb_window_t focused_win = focus->event;
-                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                        ALOGE("Task : %s", it->first.c_str());
-                        if (it->second->xcbwindow == focused_win){
-                            ALOGE("Task %s gained focus", it->first.c_str());
+        switch (event_type) {
+            case XCB_FOCUS_IN:{
+                xcb_focus_in_event_t *focus = (xcb_focus_in_event_t *)event;
+                xcb_window_t focused_win = focus->event;
+                for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                    ALOGE("Task : %s", it->first.c_str());
+                    if (it->second->xcbwindow == focused_win){
+                        ALOGE("Task %s gained focus", it->first.c_str());
+                        if (display->task != nullptr) {
+                            if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                if(isValidInteger(it->first)){
+                                    display->task->setFocusedTask(stoi(it->first));
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            case XCB_FOCUS_OUT:{
+                ALOGE("Focus lost, releasing all keys");
+                for (size_t i = 0; i < display->keysDown.size(); i++) {
+                    if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
+                        send_key_event(display, i, WL_KEYBOARD_KEY_STATE_RELEASED);
+                    }
+                }
+                break;
+            }
+            case XCB_CLIENT_MESSAGE: {
+                xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
+                ALOGE("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
+                xcb_window_t focused_win = cm ->window;
+                for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                    ALOGE("Task : %s", it->first.c_str());
+                    if (it->second->xcbwindow == focused_win){
+                        ALOGE("it->second->wm_protocols: %d, it->second->wm_delete_window: %d",
+                            it->second->wm_protocols, it->second->wm_delete_window);
+                        if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
                             if (display->task != nullptr) {
                                 if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                    ALOGE("remove task %s", it->first.c_str());
                                     if(isValidInteger(it->first)){
-                                        display->task->setFocusedTask(stoi(it->first));
+                                        display->task->removeTask(stoi(it->first));
                                     }
+                                }else{
+                                    ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
                                 }
                             }
                         }
                     }
-                    break;
                 }
-                case XCB_FOCUS_OUT:{
-                    ALOGE("Focus lost, releasing all keys");
-                    for (size_t i = 0; i < display->keysDown.size(); i++) {
-                        if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
-                            send_key_event(display, i, WL_KEYBOARD_KEY_STATE_RELEASED);
-                        }
-                    }
-                    break;
-                }
-                case XCB_CLIENT_MESSAGE: {
-                    xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
-                    ALOGE("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
-                    xcb_window_t focused_win = cm ->window;
-                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                        ALOGE("Task : %s", it->first.c_str());
-                        if (it->second->xcbwindow == focused_win){
-                            ALOGE("it->second->wm_protocols: %d, it->second->wm_delete_window: %d", 
-                                it->second->wm_protocols, it->second->wm_delete_window);
-                            if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
-                                if (display->task != nullptr) {
-                                    if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
-                                        ALOGE("remove task %s", it->first.c_str());
-                                        if(isValidInteger(it->first)){
-                                            display->task->removeTask(stoi(it->first));
-                                        }
-                                    }else{
-                                        ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    break;
-                }
-                case XCB_KEY_PRESS:
-                    if (dispatcher.key_press_cb) {
-                        dispatcher.key_press_cb(arg, (xcb_key_press_event_t *)event);
-                    }
-                    break;
-                case XCB_KEY_RELEASE:
-                    if (dispatcher.key_release_cb) {
-                        dispatcher.key_release_cb(arg, (xcb_key_release_event_t *)event);
-                    }
-                    break;
-                case XCB_BUTTON_PRESS:
-                    ALOGV("XCB_BUTTON_PRESS received");
-                    if (dispatcher.button_press_cb) {
-                        dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
-                    }
-                    break;
-                case XCB_BUTTON_RELEASE:
-                    ALOGV("XCB_BUTTON_RELEASE received");
-                    if (dispatcher.button_release_cb) {
-                        dispatcher.button_release_cb(arg, (xcb_button_release_event_t *)event);
-                    }
-                    break;
-                case XCB_MOTION_NOTIFY:
-                    if (dispatcher.motion_notify_cb) {
-                        dispatcher.motion_notify_cb(arg, (xcb_motion_notify_event_t *)event);
-                    }
-                    break;
+                break;
             }
-            free(event);
-            event_count++;
-        } while ((event = xcb_poll_for_event(connection)) && running);
-        ALOGD("Processed %d events in one cycle", event_count);
+            case XCB_BUTTON_PRESS:
+                ALOGV("XCB_BUTTON_PRESS received");
+                if (dispatcher.button_press_cb) {
+                    dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
+                }
+                break;
+            case XCB_BUTTON_RELEASE:
+                ALOGV("XCB_BUTTON_RELEASE received");
+                if (dispatcher.button_release_cb) {
+                    dispatcher.button_release_cb(arg, (xcb_button_release_event_t *)event);
+                }
+                break;
+            case XCB_MOTION_NOTIFY:
+                if (dispatcher.motion_notify_cb) {
+                    dispatcher.motion_notify_cb(arg, (xcb_motion_notify_event_t *)event);
+                }
+                break;
+        }
+        free(event);
+    }
+    if(im){
+        xcb_xim_close(im);
+        xcb_xim_destroy(im);
     }
 
     ALOGE("Exiting XCB event loop");
     return NULL;
 }
 
+
+void forward_event(xcb_xim_t *im, xcb_xic_t ic, xcb_key_press_event_t *event,
+                   void *user_data) {
+    (void) im;
+    (void) ic;
+    (void) user_data;
+    ALOGE("Key %s Keycode %u, State %u\n",
+            event->response_type == XCB_KEY_PRESS ? "press" : "release",
+            event->detail, event->state);
+    if(!localDisplay){
+        ALOGE("error localDisplay is null.");
+        return;
+    }
+    if(event->response_type == XCB_KEY_PRESS){
+        if (dispatcher.key_press_cb) {
+            dispatcher.key_press_cb(localDisplay, (xcb_key_press_event_t *)event);
+        }else{
+            ALOGE("error dispatcher.key_press_cb is null.");
+        }
+    }else if(event->response_type == XCB_KEY_RELEASE){
+        if (dispatcher.key_release_cb) {
+            dispatcher.key_release_cb(localDisplay, (xcb_key_release_event_t *)event);
+        }else{
+            ALOGE("error dispatcher.key_release_cb is null.");
+        }
+    }
+}
+
+void commit_string(xcb_xim_t *im, xcb_xic_t ic, uint32_t flag, char *str,
+                   uint32_t length, uint32_t *keysym, size_t nKeySym,
+                   void *user_data) {
+    (void) im;
+    (void) ic;
+    (void) flag;
+    (void) keysym;
+    (void) nKeySym;
+    (void) user_data;
+    if (xcb_xim_get_encoding(im) == XCB_XIM_UTF8_STRING) {
+        ALOGE("key commit utf8: %.*s\n", length, str);
+    } else if (xcb_xim_get_encoding(im) == XCB_XIM_COMPOUND_TEXT) {
+        size_t newLength = 0;
+        char *utf8 = xcb_compound_text_to_utf8(str, length, &newLength);
+        if (utf8) {
+            int l = newLength;
+            ALOGE("key commit: %.*s\n", l, utf8);
+            android::hardware::hidl_string text;
+            if (newLength > 0) {
+                text.setToExternal(utf8, newLength);
+                if(localDisplay){
+                    ALOGE("localDisplay->task->commitText: %.*s\n",l, utf8);
+                    localDisplay->task->commitText(text);
+                }else{
+                    ALOGE("error localDisplay is null!!!");
+                }
+            }
+        }
+    }
+}
+
+void disconnected(xcb_xim_t *im, void *user_data) {
+    (void) im;
+    (void) user_data;
+    ALOGE("Disconnected from input method server.\n");
+    ic = 0;
+}
+
+xcb_xim_im_callback callback = {
+    .forward_event = forward_event,
+    .commit_string = commit_string,
+    .disconnected = disconnected,
+};
+
+void create_ic_callback(xcb_xim_t *im, xcb_xic_t new_ic, void *user_data) {
+    ALOGE("create_ic_callback called");
+    (void) user_data;
+    ic = new_ic;
+    if (ic) {
+        ALOGE("icid:%u\n", ic);
+        xcb_xim_set_ic_focus(im, ic);
+    }
+}
+
+void open_callback(xcb_xim_t *im, void *user_data) {
+    ALOGE("open_callback called");
+    (void)user_data;
+    uint32_t input_style = XCB_IM_PreeditPosition | XCB_IM_StatusArea;
+    xcb_point_t spot;
+    spot.x = 720;
+    spot.y = 720;
+    xcb_xim_nested_list nested =
+        xcb_xim_create_nested_list(im, XCB_XIM_XNSpotLocation, &spot, NULL);
+    xcb_xim_create_ic(im, create_ic_callback, NULL, XCB_XIM_XNInputStyle,
+                      &input_style, XCB_XIM_XNClientWindow, &w,
+                      XCB_XIM_XNFocusWindow, &w, XCB_XIM_XNPreeditAttributes,
+                      &nested, NULL);
+    free(nested.data);
+}
 
 struct window *
 create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
@@ -1536,8 +1640,23 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_FOCUS_CHANGE,
         display->colormap
     };
+    if (display->xcbscreen) {
+        im = xcb_xim_create(display->xcbconnection, display->screen_default_nbr, NULL);
+        xcb_xim_set_im_callback(im, &callback, NULL);
+        xcb_xim_set_use_compound_text(im, true);
+        xcb_xim_set_use_utf8_string(im, true);
+
+        XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
+
+        // Open connection to XIM server.
+        bool result = xcb_xim_open(im, open_callback, true, NULL);
+        ALOGE("xcb_xim_open result = %d\n", result);
+    }else{
+        ALOGE("screen is null.");
+    }
 
     window->xcbwindow = xcb_generate_id(display->xcbconnection);
+    w = window->xcbwindow;
     xcb_create_window(display->xcbconnection,
                     32,
                     window->xcbwindow,
@@ -1744,7 +1863,12 @@ create_display(const char *gralloc)
         delete display;
         return NULL;
     }
+    ALOGD("XMODIFIERS: %s", getenv("XMODIFIERS"));
+    XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
     display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
+    display->screen_default_nbr = XDefaultScreen(display->x11display);
+    ALOGE("XDefaultScreen display->screen_default_nbr: %d", display->screen_default_nbr);
+
     property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
     sem_init(&display->egl_done, 0, 0);
@@ -1802,6 +1926,8 @@ create_display(const char *gralloc)
     if (pthread_create(&event_thread, NULL, event_loop_thread, display) != 0) {
         ALOGE("Unable to create event processing thread\n");
     }
+
+    localDisplay = display;
     return display;
 }
 

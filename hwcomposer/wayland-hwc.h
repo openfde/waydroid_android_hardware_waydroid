@@ -65,6 +65,12 @@
 #include <Xlib-xcb.h>
 #include <Xrender.h>
 
+#include <xcb/xcb_aux.h>
+#include <xcb-imdkit/encoding.h>
+#include <xcb-imdkit/imclient.h>
+#include <xcb-imdkit/ximproto.h>
+#include <xcb-imdkit/imclient_p.h>
+
 using ::android::sp;
 using ::vendor::waydroid::task::V1_0::IWaydroidTask;
 
@@ -117,6 +123,8 @@ struct display {
     xcb_connection_t *xcbconnection;
     xcb_screen_t *xcbscreen;
     XRenderPictFormat *  argb_format;
+    int screen_default_nbr;
+
     struct wl_registry *registry;
     struct wl_compositor *compositor;
     struct wl_subcompositor *subcompositor;
@@ -346,3 +354,11 @@ struct window *
 create_window(struct display *display, bool with_dummy, std::string appID, std::string taskID, hwc_color_t color);
 void
 choose_width_height(struct display* display, int32_t hint_width, int32_t hint_height);
+
+void forward_event(xcb_xim_t *im, xcb_xic_t ic, xcb_key_press_event_t *event, void *user_data);
+void commit_string(xcb_xim_t *im, xcb_xic_t ic, uint32_t flag, char *str,
+                   uint32_t length, uint32_t *keysym, size_t nKeySym,
+                   void *user_data);
+void disconnected(xcb_xim_t *im, void *user_data);
+void create_ic_callback(xcb_xim_t *im, xcb_xic_t new_ic, void *user_data);
+void open_callback(xcb_xim_t *im, void *user_data);
