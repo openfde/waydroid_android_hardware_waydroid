@@ -1535,8 +1535,8 @@ void open_callback(xcb_xim_t *im, void *user_data) {
     (void)user_data;
     uint32_t input_style = XCB_IM_PreeditPosition | XCB_IM_StatusArea;
     xcb_point_t spot;
-    spot.x = 720;
-    spot.y = 720;
+    spot.x = 800;
+    spot.y = 500;
     xcb_xim_nested_list nested =
         xcb_xim_create_nested_list(im, XCB_XIM_XNSpotLocation, &spot, NULL);
     xcb_xim_create_ic(im, create_ic_callback, NULL, XCB_XIM_XNInputStyle,
