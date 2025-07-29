@@ -362,3 +362,5 @@ void commit_string(xcb_xim_t *im, xcb_xic_t ic, uint32_t flag, char *str,
 void disconnected(xcb_xim_t *im, void *user_data);
 void create_ic_callback(xcb_xim_t *im, xcb_xic_t new_ic, void *user_data);
 void open_callback(xcb_xim_t *im, void *user_data);
+void update_spot_location(xcb_xim_t *im, xcb_xic_t ic, xcb_point_t spot);
+xcb_point_t get_dynamic_spot_position(xcb_connection_t *conn, xcb_window_t window);

@@ -1334,6 +1334,26 @@ bool isValidInteger(const std::string& str) {
     return true;
 }
 
+void set_ic_values_callback(xcb_xim_t *im, xcb_xic_t ic, void *user_data) {
+    ALOGD("set ic %d done\n", ic);
+    (void) im;
+    (void) ic;
+    (void) user_data;
+}
+
+
+void update_spot_location(xcb_xim_t *im, xcb_xic_t ic, xcb_point_t spot) {
+    if(!im){
+        ALOGE("error im is null.");
+        return;
+    }
+    xcb_xim_nested_list nested =
+        xcb_xim_create_nested_list(im, XCB_XIM_XNSpotLocation, &spot, NULL);
+    xcb_xim_set_ic_values(im, ic, set_ic_values_callback, NULL,
+                              XCB_XIM_XNPreeditAttributes, &nested, NULL);
+    free(nested.data);
+}
+
 void *event_loop_thread(void *arg) {
     ALOGE("input_loop_event start");
     struct display* display = (struct display*)arg;
@@ -1423,12 +1443,20 @@ void *event_loop_thread(void *arg) {
                 }
                 break;
             }
-            case XCB_BUTTON_PRESS:
-                ALOGV("XCB_BUTTON_PRESS received");
-                if (dispatcher.button_press_cb) {
-                    dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
+            case XCB_BUTTON_PRESS:{
+                    ALOGV("XCB_BUTTON_PRESS received");
+                    if (dispatcher.button_press_cb) {
+                        dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
+                    }
+                    ALOGE("im: %p", im);
+                    xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
+                    if(im){
+                        xcb_point_t spot = {xcb_button_event->root_x, xcb_button_event->root_y};
+                        ALOGE("on button press update_spot_location x: %d, y: %d", spot.x, spot.y);
+                        update_spot_location(im, ic, spot);
+                    }
+                    break;
                 }
-                break;
             case XCB_BUTTON_RELEASE:
                 ALOGV("XCB_BUTTON_RELEASE received");
                 if (dispatcher.button_release_cb) {
