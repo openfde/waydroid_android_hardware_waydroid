@@ -1827,6 +1827,34 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
                             1, &wm_delete_window);
     }
 
+    // hide Toast window in taskbar
+    if (appID_title == "Toast") {
+        xcb_intern_atom_cookie_t cookie_net_wm_state =
+            xcb_intern_atom(display->xcbconnection, 0, strlen("_NET_WM_STATE"), "_NET_WM_STATE");
+        xcb_intern_atom_cookie_t cookie_skip_taskbar =
+            xcb_intern_atom(display->xcbconnection, 0, strlen("_NET_WM_STATE_SKIP_TASKBAR"), "_NET_WM_STATE_SKIP_TASKBAR");
+        xcb_intern_atom_reply_t *reply_net_wm_state =
+            xcb_intern_atom_reply(display->xcbconnection, cookie_net_wm_state, NULL);
+        xcb_intern_atom_reply_t *reply_skip_taskbar =
+            xcb_intern_atom_reply(display->xcbconnection, cookie_skip_taskbar, NULL);
+        if (reply_net_wm_state || reply_skip_taskbar) {
+            free(reply_net_wm_state);
+            free(reply_skip_taskbar);
+
+            xcb_atom_t atoms[] = { reply_skip_taskbar->atom };
+            xcb_change_property(
+                display->xcbconnection,
+                XCB_PROP_MODE_REPLACE,
+                window->xcbwindow,
+                reply_net_wm_state->atom,
+                XCB_ATOM_ATOM,
+                32,
+                sizeof(atoms) / sizeof(xcb_atom_t),
+                atoms
+            );
+        }
+    }
+
     set_window_title(display->xcbconnection, window->xcbwindow, appID_title);
     set_window_class(display->xcbconnection, window->xcbwindow, window->appID, window->appID);
 
