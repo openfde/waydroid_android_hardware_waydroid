@@ -1578,6 +1578,46 @@ void open_callback(xcb_xim_t *im, void *user_data) {
     free(nested.data);
 }
 
+void set_window_title(xcb_connection_t *connection, xcb_window_t window, const std::string &title) {
+    ALOGE("set_window_title %s", title.c_str());
+
+    const char *utf8_title = title.c_str();
+
+    // set WM_NAME (STRING type, compatible with old window managers)
+    xcb_change_property(connection,
+                        XCB_PROP_MODE_REPLACE,
+                        window,
+                        XCB_ATOM_WM_NAME,
+                        XCB_ATOM_STRING,
+                        8, // 8-bit encoding
+                        strlen(utf8_title),
+                        utf8_title);
+
+    // set _NET_WM_NAME (UTF8_STRING type, supports Chinese)
+    xcb_intern_atom_cookie_t utf8_string_cookie = xcb_intern_atom(connection, 0, strlen("UTF8_STRING"), "UTF8_STRING");
+    xcb_intern_atom_cookie_t net_wm_name_cookie = xcb_intern_atom(connection, 0, strlen("_NET_WM_NAME"), "_NET_WM_NAME");
+    xcb_intern_atom_reply_t *utf8_string_reply = xcb_intern_atom_reply(connection, utf8_string_cookie, NULL);
+    xcb_intern_atom_reply_t *net_wm_name_reply = xcb_intern_atom_reply(connection, net_wm_name_cookie, NULL);
+
+    if (utf8_string_reply && net_wm_name_reply) {
+        xcb_change_property(connection,
+                            XCB_PROP_MODE_REPLACE,
+                            window,
+                            net_wm_name_reply->atom,
+                            utf8_string_reply->atom,
+                            8, // UTF-8 Use 8-bit encoding
+                            strlen(utf8_title),
+                            utf8_title);
+    } else {
+        ALOGE("unable to obtain UTF8_STRING or _NET_WM_NAME atom");
+    }
+
+    free(utf8_string_reply);
+    free(net_wm_name_reply);
+
+    xcb_flush(connection);
+}
+
 struct window *
 create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
 {
@@ -1773,17 +1813,9 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
                             1, &wm_delete_window);
     }
 
+    set_window_title(display->xcbconnection, window->xcbwindow, appID_title);
+
     xcb_map_window(display->xcbconnection, window->xcbwindow);
-    xcb_change_property(
-        display->xcbconnection,
-        XCB_PROP_MODE_REPLACE,
-        window->xcbwindow,
-        XCB_ATOM_WM_NAME,
-        XCB_ATOM_STRING,
-        8,
-        strlen(appID_title.c_str()),
-        appID_title.c_str()
-    );
     ALOGE("gy xcreate xcb window %s color %d, width %d height %d",appID_title.c_str(),color.a, display->width,display->height);
 
 /*
