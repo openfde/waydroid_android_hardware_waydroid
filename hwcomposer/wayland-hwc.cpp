@@ -1619,7 +1619,7 @@ void set_window_title(xcb_connection_t *connection, xcb_window_t window, const s
 }
 
 void set_window_class(xcb_connection_t *connection, xcb_window_t window, const std::string &instance_name, const std::string &class_name) {
-    std::string wm_class = instance_name + '\0' + class_name + '\0';
+    std::string wm_class = instance_name + '\0' + class_name + "_fde" + '\0';
     xcb_change_property(connection,
                         XCB_PROP_MODE_REPLACE,
                         window,
