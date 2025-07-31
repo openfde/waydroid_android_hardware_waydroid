@@ -1618,6 +1618,20 @@ void set_window_title(xcb_connection_t *connection, xcb_window_t window, const s
     xcb_flush(connection);
 }
 
+void set_window_class(xcb_connection_t *connection, xcb_window_t window, const std::string &instance_name, const std::string &class_name) {
+    std::string wm_class = instance_name + '\0' + class_name + '\0';
+    xcb_change_property(connection,
+                        XCB_PROP_MODE_REPLACE,
+                        window,
+                        XCB_ATOM_WM_CLASS,
+                        XCB_ATOM_STRING,
+                        8,
+                        wm_class.length(),
+                        wm_class.c_str());
+    xcb_flush(connection);
+}
+
+
 struct window *
 create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
 {
@@ -1814,6 +1828,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     }
 
     set_window_title(display->xcbconnection, window->xcbwindow, appID_title);
+    set_window_class(display->xcbconnection, window->xcbwindow, window->appID, window->appID);
 
     xcb_map_window(display->xcbconnection, window->xcbwindow);
     ALOGE("gy xcreate xcb window %s color %d, width %d height %d",appID_title.c_str(),color.a, display->width,display->height);
