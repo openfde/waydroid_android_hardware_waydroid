@@ -1726,19 +1726,24 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_FOCUS_CHANGE,
         display->colormap
     };
-    if (display->xcbscreen) {
-        im = xcb_xim_create(display->xcbconnection, display->screen_default_nbr, NULL);
-        xcb_xim_set_im_callback(im, &callback, NULL);
-        xcb_xim_set_use_compound_text(im, true);
-        xcb_xim_set_use_utf8_string(im, true);
+    ALOGE("create window for taskID: %s", taskID.c_str());
+    if(isValidInteger(taskID)){
+        if (display->xcbscreen) {
+            im = xcb_xim_create(display->xcbconnection, display->screen_default_nbr, NULL);
+            xcb_xim_set_im_callback(im, &callback, NULL);
+            xcb_xim_set_use_compound_text(im, true);
+            xcb_xim_set_use_utf8_string(im, true);
 
-        XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
+            XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
 
-        // Open connection to XIM server.
-        bool result = xcb_xim_open(im, open_callback, true, NULL);
-        ALOGE("xcb_xim_open result = %d\n", result);
+            // Open connection to XIM server.
+            bool result = xcb_xim_open(im, open_callback, true, NULL);
+            ALOGE("xcb_xim_open result = %d\n", result);
+        }else{
+            ALOGE("screen is null.");
+        }
     }else{
-        ALOGE("screen is null.");
+        ALOGE("the taskID: %s is not a normal app's", taskID.c_str());
     }
 
     window->xcbwindow = xcb_generate_id(display->xcbconnection);
