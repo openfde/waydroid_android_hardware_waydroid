@@ -645,6 +645,7 @@ send_key_event(display *data, uint32_t key, wl_keyboard_key_state state)
     }
     ADD_EVENT(EV_KEY, key, state);
 
+    ALOGE("send_key_event write INPUT_KEYBOARD");
     res = write(display->input_fd[INPUT_KEYBOARD], &event, sizeof(event));
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -671,6 +672,7 @@ static void pointer_handle_button_to_touch_down(struct display *display) {
     ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
     display->isTouchDown = true;
+    ALOGE("pointer_handle_button_to_touch_down write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
 
     if (res < sizeof(event))
@@ -694,6 +696,7 @@ static void pointer_handle_button_to_touch_up(struct display *display) {
     ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
     display->isTouchDown = false;
+    ALOGE("pointer_handle_button_to_touch_up write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
 
     if (res < sizeof(event))
@@ -754,6 +757,7 @@ pointer_cancel_axis_to_two_finger_touch(struct display *display){
     ADD_EVENT(EV_ABS, ABS_MT_SLOT, 1);
     ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    ALOGE("pointer_cancel_axis_to_two_finger_touch write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -808,7 +812,7 @@ pointer_cancel_axis_to_touch(struct display *display, bool fromAxisStopEvent, bo
         ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
     }
-
+    ALOGE("pointer_cancel_axis_to_touch write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, eventSize);
     if (res < sizeof(event)) {
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -974,6 +978,7 @@ static void handle_pinch_update(void *data, uint32_t time, wl_fixed_t dx, wl_fix
     ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
 
+    ALOGE("on_button_release write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
 
     if (res < sizeof(event))
@@ -1022,6 +1027,7 @@ pointer_axis_to_touch(struct display *display, int move, bool verticalScroll)
         }
         ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+        ALOGE("pointer_axis_to_touch write INPUT_TOUCH");
         res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
         if (res < sizeof(event)) {
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -1044,6 +1050,7 @@ pointer_axis_to_touch(struct display *display, int move, bool verticalScroll)
     }
     ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+    ALOGE("pointer_axis_to_touch write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -1118,6 +1125,7 @@ x11_pointer_handle_axis(void *data,  uint32_t axis, int value)
               ? REL_WHEEL : REL_HWHEEL, move);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
 
+        ALOGE("x11_pointer_handle_axis write INPUT_POINTER");
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -1194,6 +1202,7 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
         if(button != 0){
             ADD_EVENT(EV_KEY, button, 1);
             ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+            ALOGE("on_button_press write INPUT_POINTER");
             res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         }
     }
@@ -1253,6 +1262,7 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
         if(button != 0){
             ADD_EVENT(EV_KEY, button, 0);
             ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+            ALOGE("on_button_release write INPUT_POINTER");
             res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         }
     }
@@ -1316,6 +1326,7 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
             return;
         }
 
+        ALOGE("on_motion_notify write INPUT_POINTER");
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
