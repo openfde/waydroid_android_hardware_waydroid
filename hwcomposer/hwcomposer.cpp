@@ -1105,18 +1105,17 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 }
             }
         }
-
         // Detecting cursor layer
+        std::string LayerRawName;
+        std::istringstream issLayer(layer_name);
+        std::getline(issLayer, LayerRawName, '#');
+        if (LayerRawName == "Sprite") {
+            if (fb_layer->acquireFenceFd != -1) {
+             close(fb_layer->acquireFenceFd);
+            }
+            continue;
+        }
         if (!window) {
-            std::string LayerRawName;
-            std::istringstream issLayer(layer_name);
-            std::getline(issLayer, LayerRawName, '#');
-             if (LayerRawName == "Sprite") {
-		 if (fb_layer->acquireFenceFd != -1) {
-		     close(fb_layer->acquireFenceFd);
-		 }
-		 continue;
-	     }
             // if (LayerRawName == "Sprite" && pdev->display->pointer_surface) {
             //     if (pdev->display->cursor_surface) {
             //         struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
