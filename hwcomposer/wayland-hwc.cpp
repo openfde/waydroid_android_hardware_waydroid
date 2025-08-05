@@ -1950,6 +1950,12 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     return window;
 }
 
+void disable_auto_repeat(Display *display) {
+    XKeyboardControl control;
+    control.auto_repeat_mode = AutoRepeatModeOff;
+    XChangeKeyboardControl(display, KBAutoRepeatMode, &control);
+}
+
 
 struct display *
 create_display(const char *gralloc)
@@ -1991,6 +1997,7 @@ create_display(const char *gralloc)
     display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
     display->screen_default_nbr = XDefaultScreen(display->x11display);
     ALOGE("XDefaultScreen display->screen_default_nbr: %d", display->screen_default_nbr);
+    disable_auto_repeat(display->x11display);
 
     property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
