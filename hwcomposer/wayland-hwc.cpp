@@ -523,6 +523,9 @@ destroy_window(struct window *window, bool keep)
     if (!window->rects.empty()) {
         window->rects.clear();
     }
+    if (!window->crops.empty()) {
+        window->crops.clear();
+    }
     if (window->backpixmap) {
         XFreePixmap(window->display->x11display, window->backpixmap);
         window->backpixmap = 0;

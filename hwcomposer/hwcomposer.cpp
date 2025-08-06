@@ -168,6 +168,71 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 }
 */
 
+
+static int set_black_background(struct waydroid_hwc_composer_device_1 * pdev, struct window * win){
+	if (win->rects.size() <= 1) {
+		return 0;
+	}
+	int min_x = INT_MAX, min_y = INT_MAX , cropx = 0, cropy = 0;
+	int max_right = INT_MIN, max_bottom = INT_MIN;
+	// Calculate bounding box from all rectangles
+	for (size_t i = 0; i < win->rects.size(); i++) {
+		const auto& rect = win->rects[i];
+		const auto& crop = win->crops[i];
+		min_x = std::min(min_x, (int)rect.x);
+		if (min_x == rect.x){
+			cropx = crop.left;
+		}
+		min_y = std::min(min_y, (int)rect.y);
+		if (min_y == rect.y) {
+			cropy = crop.top;
+		}
+		max_right = std::max(max_right, (int)(rect.x + rect.width));
+		max_bottom = std::max(max_bottom, (int)(rect.y + rect.height));
+	}
+
+	// Get outer frame dimensions
+	int frame_x = min_x;
+	int frame_y = min_y;
+	int src_x = fmax(0, cropx);
+	int src_y = fmax(0, cropy);
+	int frame_width = max_right - min_x;
+	int frame_height = max_bottom - min_y;
+	if (frame_width < pdev->display->width) {
+		frame_x += (10 - src_x);
+	}
+	frame_y +=14;
+	//ALOGI("black background src_x %d src_Y %d  w %d h %d  frame_x %d fram_y %d ", src_x ,src_y, frame_width, frame_height, frame_x, frame_y);
+	if (frame_width + frame_x >= pdev->display->width + 10) {
+		frame_width -= (10 - src_x);
+	}else {
+		frame_width -=(10 + 10 - src_x);
+	}
+	frame_height -=28;
+	if ( src_x <= 10 ) {
+		src_x = 0;
+	}
+	XRenderColor frame_color = {0, 0, 0, 0xFFFF}; // black
+
+	// Create a temporary picture to store current backxpicture content
+	Pixmap tempPixmap = XCreatePixmap(pdev->display->x11display, win->xcbwindow, pdev->display->width,pdev->display->height, 32);
+	Picture temp_picture = XRenderCreatePicture(pdev->display->x11display, tempPixmap, pdev->display->argb_format, 0, NULL);
+	// Copy current backxpicture to temporary picture
+	XRenderComposite(pdev->display->x11display, PictOpSrc, win->backxpicture, None, temp_picture,
+		    0, 0, 0, 0, 0, 0, pdev->display->width, pdev->display->height);
+	Picture solid_picture = XRenderCreateSolidFill(pdev->display->x11display, &frame_color);
+	XRenderComposite(pdev->display->x11display, PictOpSrc, solid_picture, None, win->backxpicture,
+		    src_x, src_y, 0, 0, frame_x, frame_y, frame_width , frame_height);
+	XRenderFreePicture(pdev->display->x11display, solid_picture);
+	// Blend the temporary picture back onto backxpicture with PictOpOver
+	XRenderComposite(pdev->display->x11display, PictOpOver, temp_picture, None, win->backxpicture,
+		    0, 0, 0, 0, 0, 0, pdev->display->width, pdev->display->height);
+	XFreePixmap(pdev->display->x11display, tempPixmap);
+	// Clean up temporary picture
+	XRenderFreePicture(pdev->display->x11display, temp_picture);
+	return 0;
+}
+
 static int hwc_prepare(hwc_composer_device_1_t* dev,
                        size_t numDisplays, hwc_display_contents_1_t** displays) {
     struct waydroid_hwc_composer_device_1 *pdev = (struct waydroid_hwc_composer_device_1 *)dev;
@@ -547,7 +612,6 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     int dst_height = fmax(1, ceil((layer->displayFrame.bottom - layer->displayFrame.top) / pdev->display->scale));
 
 
-    xcb_rectangle_t rects[1];
      // Check if scaling is needed
     if (src_width != dst_width || src_height != dst_height) {
         // Set scale transform for the picture
@@ -577,19 +641,22 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
         XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &identity_transform);
     }
 
-    rects[0] = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
     if (use_subsurface) {
 	if (window->lastLayer == 0) {
 		window->rects.clear();
+		window->crops.clear();
 	}
         xcb_rectangle_t rect;
         rect = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
         window->rects.push_back(rect);
+	window->crops.push_back(sourceCrop);
     }
 
 
+
     if (0)
-	ALOGE("src x %d y%d dst width %d dst height %d", src_x,src_y, dst_width, dst_height);
+	ALOGE("src x %d y%d dst width %d dst height %d values.x %d, values.y %d app %s lastLayer %d  display right%d", src_x,src_y, dst_width, dst_height,
+			values.x,values.y,window->appID.c_str(), window->lastLayer, layer->displayFrame.right);
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                   src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
 
@@ -1348,7 +1415,10 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
      if (pdev->use_subsurface)
          for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
              if (it->second){
-        	//get_input_shape(pdev->display->xcbconnection, it->second->xcbwindow);
+		     if (it->second->rects.size() > 1)
+		     {
+			set_black_background(pdev,it->second);
+		     }
 	     	XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
 		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
 		if (!it->second->rects.empty()) {

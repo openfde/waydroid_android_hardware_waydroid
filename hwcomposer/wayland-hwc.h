@@ -293,6 +293,7 @@ struct window {
     Pixmap backpixmap;
     int dri3_fd;
     std::vector<xcb_rectangle_t> rects;
+    std::vector<hwc_rect_t> crops;
     
     struct wl_surface *surface;
     struct wp_viewport *viewport;
