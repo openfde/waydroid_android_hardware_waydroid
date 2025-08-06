@@ -283,7 +283,7 @@ cc_prebuilt_library_shared {
 }
 
 cc_library_shared {
-    name: "hwcomposer.x11droid",
+    name: "hwcomposer.x11",
     relative_install_path: "hw",
     vendor: true,
     shared_libs: [
