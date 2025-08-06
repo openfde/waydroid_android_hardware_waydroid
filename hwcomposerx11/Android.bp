@@ -39,7 +39,7 @@ cc_prebuilt_library_shared {
     ],
     proprietary : true,
     vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
+    visibility: ["//hardware/waydroid/hwcomposerx11"],
 }
 cc_prebuilt_library_shared {
     name: "libX11-xcb",
@@ -65,7 +65,7 @@ cc_prebuilt_library_shared {
     ],
     proprietary : true,
     vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
+    visibility: ["//hardware/waydroid/hwcomposerx11"],
 }
 cc_prebuilt_library_shared {
     name: "libxcb-shape",
@@ -91,7 +91,7 @@ cc_prebuilt_library_shared {
     ],
     proprietary : true,
     vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
+    visibility: ["//hardware/waydroid/hwcomposerx11"],
 }
 cc_prebuilt_library_shared {
     name: "libX11",
@@ -117,7 +117,7 @@ cc_prebuilt_library_shared {
     ],
     proprietary : true,
     vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
+    visibility: ["//hardware/waydroid/hwcomposerx11"],
 }
 
 cc_prebuilt_library_shared {
@@ -164,7 +164,7 @@ cc_prebuilt_library_shared {
     },
     proprietary : true,
     vendor: false,
-    visibility: ["//hardware/waydroid/hwcomposer"],
+    visibility: ["//hardware/waydroid/hwcomposerx11"],
 }
 
 cc_prebuilt_library_shared {
@@ -283,7 +283,7 @@ cc_prebuilt_library_shared {
 }
 
 cc_library_shared {
-    name: "hwcomposer.waydroid",
+    name: "hwcomposer.x11droid",
     relative_install_path: "hw",
     vendor: true,
     shared_libs: [
@@ -370,19 +370,3 @@ cc_library_shared {
     generated_headers: ["wayland_android_client_protocol_headers"],
 }
 
-// Generate wayland-android protocol source file
-genrule {
-    name: "wayland_android_client_protocol_sources",
-    srcs: ["wayland-android.xml"],
-    tools: ["wayland_scanner"],
-    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
-    out: ["wayland-android-client-protocol.c"],
-}
-// Generate wayland-android protocol header file
-genrule {
-    name: "wayland_android_client_protocol_headers",
-    srcs: ["wayland-android.xml"],
-    tools: ["wayland_scanner"],
-    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
-    out: ["wayland-android-client-protocol.h"],
-}
