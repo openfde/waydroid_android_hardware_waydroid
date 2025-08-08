@@ -98,16 +98,41 @@ int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t ma
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
 //static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
-/*static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
+static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
     auto it = pdev->display->buffer_map.find(handle);
     if (it != pdev->display->buffer_map.end()) {
         destroy_buffer(pdev->display,it->second);
         pdev->display->buffer_map.erase(it);
     }
 }
-*/
 
-/*static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
+static void x11_set_custom_cursor(waydroid_hwc_composer_device_1* pdev, Picture xpicture, int hot_x, int hot_y) {
+    ALOGD("x11_set_custom_cursor hot_x: %d, hot_y: %d", hot_x, hot_y);
+    struct display *display = pdev->display;
+
+    if(!display)
+       return;
+
+    if(!xpicture){
+         ALOGE("error xpicture is null");
+        return;
+    }
+
+    // Create the cursor from the picture
+    Cursor cursor = XRenderCreateCursor(display->x11display, xpicture, hot_x, hot_y);
+    if(cursor == None){
+        return;
+    }
+    std::scoped_lock lock(pdev->display->windowsMutex);
+    for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
+        if (it->second){
+            XDefineCursor(display->x11display, it->second->xcbwindow, cursor);
+        }
+    }
+
+}
+
+static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
     // if (!pdev->display->cursor_surface) {
     //     return false;
     // }
@@ -119,8 +144,30 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     }
 
     fb_layer->compositionType = HWC_OVERLAY; // Not participating in SurfaceFlinger GPU compositing hide internal cursor
+    int64_t mouse_icon_addr = property_get_int64("fde.mouse_icon_addr", 0);
+    if (pdev->display->mouse_icon_addr != mouse_icon_addr) {
+        pdev->display->mouse_icon_addr = mouse_icon_addr;
+        pdev->display->additional_refresh_cursor_times = 0;
+        erase_cursor_layer_buffer(pdev, fb_layer->handle);
+    }else{
+        if(pdev->display->additional_refresh_cursor_times > 3){      //Refresh the wayland cursor three additional times
+            return true;
+        }else{
+            erase_cursor_layer_buffer(pdev, fb_layer->handle);
+        }
+    }
 
-    */
+    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
+    if (!buf) {
+        ALOGE("Failed to get wayland buffer");
+        return false;
+    }
+    int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
+    int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
+    x11_set_custom_cursor(pdev, buf->xpicture, icon_hotspot_x, icon_hotspot_y);
+    pdev->display->additional_refresh_cursor_times++;
+    return true;
+}
     /*
      * To update the wayland cursor, the fde.mouse_icon_addr system property was introduced.
      * When the internal mouse shape changes, its value will change accordingly.
@@ -280,12 +327,12 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
             (pdev->use_subsurface ? HWC_FRAMEBUFFER : HWC_OVERLAY))
             fb_layer->compositionType =
                 (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER);
-        //foundCursorLayer |= update_cursor_surface(pdev, fb_layer, i);
+        foundCursorLayer |= update_cursor_surface(pdev, fb_layer, i);
     }
     if(!foundCursorLayer && pdev->display->mouse_icon_addr != -1){
         // wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial, NULL, 0, 0);
         pdev->display->mouse_icon_addr = -1;
-        ALOGI("wayland cursor hidden");
+        ALOGI("x11 cursor hidden");
     }
 
     return 0;
@@ -444,6 +491,29 @@ static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_
         }
         buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
         close(x11_fd);
+    }else{
+        int x11_fd = dup(prime_fd);
+        if (x11_fd >= 0) {
+            fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
+        }else {
+            ALOGE("dup fd failed");
+            return ;
+        }
+
+        buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+        XRenderPictureAttributes pa;
+        pa.repeat = False;
+        xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
+            buf->xcbpixmap, pdev->display->xcbscreen->root, size, width, height, stride, 32, 32, x11_fd);
+        xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+        if (pixmap_error) {
+           ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+           free(pixmap_error);
+           close(x11_fd);
+           return ;
+        }
+        buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
+        close(x11_fd);
     }
 }
 
@@ -493,19 +563,19 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     buf->xpicture = 0;
 
     if (pdev->display->gtype == GRALLOC_GBM) {
-	struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
-	buf->width=drm_handle->width;
-	buf->height=drm_handle->height;
-	if (1) {
+        struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
+        buf->width=drm_handle->width;
+        buf->height=drm_handle->height;
+        if (1) {
             getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (! buf->xpicture) {
+            if (!buf->xpicture) {
                 delete buf;
                 return NULL;
             }
-	} else {
-	    ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
-	    update_shm_buffer(pdev->display, buf);
-	}
+        } else {
+            ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
+            update_shm_buffer(pdev->display, buf);
+        }
     } else if (pdev->display->gtype == GRALLOC_RANCHU) {
         struct cb_handle_t* cb_handle = (struct cb_handle_t*)layer->handle;
         auto width = cb_handle->width;
@@ -520,7 +590,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         buf->width=cros_handle->width;
         buf->height=cros_handle->height;
         getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (! buf->xpicture) {
+            if (!buf->xpicture) {
                 delete buf;
                 return NULL;
             }
@@ -551,7 +621,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
 	    buf->height=gc_handle->height;
 	if (1) {
             getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (! buf->xpicture) {
+            if (!buf->xpicture) {
                 delete buf;
                 return NULL;
             }
