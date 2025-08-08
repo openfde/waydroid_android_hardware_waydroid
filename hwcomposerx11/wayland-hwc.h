@@ -366,3 +366,5 @@ void open_callback(xcb_xim_t *im, void *user_data);
 void update_spot_location(xcb_xim_t *im, xcb_xic_t ic, xcb_point_t spot);
 void set_window_title(xcb_connection_t *connection, xcb_window_t window, const std::string &title);
 void set_window_class(xcb_connection_t *connection, xcb_window_t window, const std::string &instance_name, const std::string &class_name);
+void disable_auto_repeat(Display *display);
+void enable_auto_repeat(Display *display);

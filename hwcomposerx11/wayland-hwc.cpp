@@ -1420,9 +1420,11 @@ void *event_loop_thread(void *arg) {
                         }
                     }
                 }
+                disable_auto_repeat(display->x11display);
                 break;
             }
             case XCB_FOCUS_OUT:{
+                enable_auto_repeat(display->x11display);
                 ALOGE("Focus lost, releasing all keys");
                 for (size_t i = 0; i < display->keysDown.size(); i++) {
                     if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
@@ -1953,8 +1955,16 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
 }
 
 void disable_auto_repeat(Display *display) {
+    ALOGD("disable keyboard auto_repeat_mode");
     XKeyboardControl control;
     control.auto_repeat_mode = AutoRepeatModeOff;
+    XChangeKeyboardControl(display, KBAutoRepeatMode, &control);
+}
+
+void enable_auto_repeat(Display *display) {
+    ALOGD("enable keyboard auto_repeat_mode");
+    XKeyboardControl control;
+    control.auto_repeat_mode = AutoRepeatModeOn;
     XChangeKeyboardControl(display, KBAutoRepeatMode, &control);
 }
 
@@ -1999,7 +2009,6 @@ create_display(const char *gralloc)
     display->xcbscreen = xcb_setup_roots_iterator(xcb_get_setup(display->xcbconnection)).data;
     display->screen_default_nbr = XDefaultScreen(display->x11display);
     ALOGE("XDefaultScreen display->screen_default_nbr: %d", display->screen_default_nbr);
-    disable_auto_repeat(display->x11display);
 
     property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
