@@ -241,22 +241,24 @@ static int set_black_background(struct waydroid_hwc_composer_device_1 * pdev, st
 	// Get outer frame dimensions
 	int frame_x = min_x;
 	int frame_y = min_y;
+	int border = 10;
+	int borderAndRadius = 14;
 	int src_x = fmax(0, cropx);
 	int src_y = fmax(0, cropy);
 	int frame_width = max_right - min_x;
 	int frame_height = max_bottom - min_y;
 	if (frame_width < pdev->display->width) {
-		frame_x += (10 - src_x);
+		frame_x += (border - src_x);
 	}
-	frame_y +=14;
+	frame_y += borderAndRadius;
 	//ALOGI("black background src_x %d src_Y %d  w %d h %d  frame_x %d fram_y %d ", src_x ,src_y, frame_width, frame_height, frame_x, frame_y);
-	if (frame_width + frame_x >= pdev->display->width + 10) {
-		frame_width -= (10 - src_x);
+	if (frame_width + frame_x >= pdev->display->width + border) {
+		frame_width -= (border - src_x);
 	}else {
-		frame_width -=(10 + 10 - src_x);
+		frame_width -=(border + border - src_x);
 	}
-	frame_height -=28;
-	if ( src_x <= 10 ) {
+	frame_height -= 2* borderAndRadius;
+	if ( src_x <= border ) {
 		src_x = 0;
 	}
 	XRenderColor frame_color = {0, 0, 0, 0xFFFF}; // black
