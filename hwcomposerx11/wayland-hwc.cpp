@@ -1156,19 +1156,6 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
                    __FILE__, __LINE__, strerror(errno));
-        } else {
-            int64_t nanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
-            int64_t mDoubleClickIntervalTime = 200 * 1000 * 1000;
-            if (property_get_bool("persist.waydroid.multi_windows", false)) {
-                mDoubleClickIntervalTime = 500 * 1000 * 1000;
-            }
-            if (nanoSeconds - display->lastMouseLeftDownNanoSeconds < mDoubleClickIntervalTime) {
-                // If the time between two left button clicks is less than 200ms, drop the second click to avoid the launcher task being set to the frontest 
-                ALOGI("on_button_press: double click detected in less than %ld ms", (mDoubleClickIntervalTime / 1000 / 1000));
-                return;
-            } else {
-                display->lastMouseLeftDownNanoSeconds = rt.tv_sec * 1000 * 1000 * 1000 + rt.tv_nsec;
-            }
         }
       // convert pointer event to touch event
         pointer_handle_button_to_touch_down(display);
