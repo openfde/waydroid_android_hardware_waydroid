@@ -124,6 +124,9 @@ struct display {
     xcb_screen_t *xcbscreen;
     XRenderPictFormat *  argb_format;
     int screen_default_nbr;
+    xcb_window_t w;
+    xcb_xic_t ic;
+    xcb_xim_t *im;
 
     struct wl_registry *registry;
     struct wl_compositor *compositor;
@@ -361,7 +364,7 @@ void commit_string(xcb_xim_t *im, xcb_xic_t ic, uint32_t flag, char *str,
                    void *user_data);
 void disconnected(xcb_xim_t *im, void *user_data);
 void create_ic_callback(xcb_xim_t *im, xcb_xic_t new_ic, void *user_data);
-void open_callback(xcb_xim_t *im, void *user_data);
+void open_im_callback(xcb_xim_t *im, void *user_data);
 void update_spot_location(xcb_xim_t *im, xcb_xic_t ic, xcb_point_t spot);
 void set_window_title(xcb_connection_t *connection, xcb_window_t window, const std::string &title);
 void set_window_class(xcb_connection_t *connection, xcb_window_t window, const std::string &instance_name, const std::string &class_name);

@@ -81,12 +81,6 @@ using ::android::hardware::hidl_string;
 const int AXIS_TOUCH_SLOT_ID = 8;
 const int AXIS_TOUCH_TRACKING_ID = AXIS_TOUCH_SLOT_ID;
 
-struct buffer;
-xcb_window_t w;
-xcb_xic_t ic;
-xcb_xim_t *im;
-struct display *localDisplay;
-
 static int find_argb_visual(struct display *display) ;
 void
 destroy_buffer(struct display * display ,struct buffer* buf) {
@@ -515,8 +509,9 @@ struct wl_shell_surface_listener shell_surface_listener = {
 
 void
 destroy_window(struct window *window, bool keep)
-{   
-   if (window->backxpicture) {
+{
+    ALOGE("destroy window window->xcbwindow: %u", window->xcbwindow);
+    if (window->backxpicture) {
         XRenderFreePicture(window->display->x11display, window->backxpicture);
         window->backxpicture = 0;
     }
@@ -1371,12 +1366,13 @@ void *event_loop_thread(void *arg) {
         }
         uint8_t event_type = event->response_type & ~0x80;
         ALOGD("Processing event: type=%d", event_type);
-        if(im){
-            if (!xcb_xim_filter_event(im, event)) {
+        if(display->im){
+            if (!xcb_xim_filter_event(display->im, event)) {
                 // Forward event to input method if IC is created.
-                if (ic && (((event->response_type & ~0x80) == XCB_KEY_PRESS) ||
+                if (display->ic && (((event->response_type & ~0x80) == XCB_KEY_PRESS) ||
                            ((event->response_type & ~0x80) == XCB_KEY_RELEASE))) {
-                    xcb_xim_forward_event(im, ic, (xcb_key_press_event_t *)event);
+                    ALOGE("ic: %d", display->ic);
+                    xcb_xim_forward_event(display->im, display->ic, (xcb_key_press_event_t *)event);
                     ALOGE("xcb_xim_forward_event called. ");
                     free(event);
                     continue;
@@ -1394,6 +1390,7 @@ void *event_loop_thread(void *arg) {
             case XCB_FOCUS_IN:{
                 xcb_focus_in_event_t *focus = (xcb_focus_in_event_t *)event;
                 xcb_window_t focused_win = focus->event;
+                std::scoped_lock lock(display->windowsMutex);
                 for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
                     ALOGE("Task : %s", it->first.c_str());
                     if (it->second->xcbwindow == focused_win){
@@ -1424,6 +1421,7 @@ void *event_loop_thread(void *arg) {
                 xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
                 ALOGE("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
                 xcb_window_t focused_win = cm ->window;
+                std::scoped_lock lock(display->windowsMutex);
                 for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
                     ALOGE("Task : %s", it->first.c_str());
                     if (it->second->xcbwindow == focused_win){
@@ -1450,12 +1448,12 @@ void *event_loop_thread(void *arg) {
                     if (dispatcher.button_press_cb) {
                         dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
                     }
-                    ALOGE("im: %p", im);
+                    ALOGE("im: %p", display->im);
                     xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
-                    if(im){
+                    if(display->im){
                         xcb_point_t spot = {xcb_button_event->root_x, xcb_button_event->root_y};
                         ALOGE("on button press update_spot_location x: %d, y: %d", spot.x, spot.y);
-                        update_spot_location(im, ic, spot);
+                        update_spot_location(display->im, display->ic, spot);
                     }
                     break;
                 }
@@ -1473,9 +1471,9 @@ void *event_loop_thread(void *arg) {
         }
         free(event);
     }
-    if(im){
-        xcb_xim_close(im);
-        xcb_xim_destroy(im);
+    if(display->im){
+        xcb_xim_close(display->im);
+        xcb_xim_destroy(display->im);
     }
 
     ALOGE("Exiting XCB event loop");
@@ -1487,23 +1485,24 @@ void forward_event(xcb_xim_t *im, xcb_xic_t ic, xcb_key_press_event_t *event,
                    void *user_data) {
     (void) im;
     (void) ic;
-    (void) user_data;
+    //(void) user_data;
+    struct display* display = (struct display*)user_data;
     ALOGE("Key %s Keycode %u, State %u\n",
             event->response_type == XCB_KEY_PRESS ? "press" : "release",
             event->detail, event->state);
-    if(!localDisplay){
-        ALOGE("error localDisplay is null.");
+    if(!display){
+        ALOGE("error display is null.");
         return;
     }
     if(event->response_type == XCB_KEY_PRESS){
         if (dispatcher.key_press_cb) {
-            dispatcher.key_press_cb(localDisplay, (xcb_key_press_event_t *)event);
+            dispatcher.key_press_cb(display, (xcb_key_press_event_t *)event);
         }else{
             ALOGE("error dispatcher.key_press_cb is null.");
         }
     }else if(event->response_type == XCB_KEY_RELEASE){
         if (dispatcher.key_release_cb) {
-            dispatcher.key_release_cb(localDisplay, (xcb_key_release_event_t *)event);
+            dispatcher.key_release_cb(display, (xcb_key_release_event_t *)event);
         }else{
             ALOGE("error dispatcher.key_release_cb is null.");
         }
@@ -1518,24 +1517,31 @@ void commit_string(xcb_xim_t *im, xcb_xic_t ic, uint32_t flag, char *str,
     (void) flag;
     (void) keysym;
     (void) nKeySym;
-    (void) user_data;
+    //(void) user_data;
+    struct display* display = (struct display*)user_data;
+    if(!display){
+        ALOGE("commit_string error display is NULL");
+        return;
+    }
+    android::hardware::hidl_string text;
     if (xcb_xim_get_encoding(im) == XCB_XIM_UTF8_STRING) {
-        ALOGE("key commit utf8: %.*s\n", length, str);
+        ALOGE("key commit utf8: %.*s", length, str);
+        if (length > 0) {
+            int l = length;
+            text.setToExternal(str, length);
+            ALOGE("display->task->commitText: %.*s",l, str);
+            display->task->commitText(text);
+        }
     } else if (xcb_xim_get_encoding(im) == XCB_XIM_COMPOUND_TEXT) {
         size_t newLength = 0;
         char *utf8 = xcb_compound_text_to_utf8(str, length, &newLength);
         if (utf8) {
             int l = newLength;
-            ALOGE("key commit: %.*s\n", l, utf8);
-            android::hardware::hidl_string text;
+            ALOGE("key commit: %.*s", l, utf8);
             if (newLength > 0) {
                 text.setToExternal(utf8, newLength);
-                if(localDisplay){
-                    ALOGE("localDisplay->task->commitText: %.*s\n",l, utf8);
-                    localDisplay->task->commitText(text);
-                }else{
-                    ALOGE("error localDisplay is null!!!");
-                }
+                ALOGE("display->task->commitText: %.*s",l, utf8);
+                display->task->commitText(text);
             }
         }
     }
@@ -1544,8 +1550,7 @@ void commit_string(xcb_xim_t *im, xcb_xic_t ic, uint32_t flag, char *str,
 void disconnected(xcb_xim_t *im, void *user_data) {
     (void) im;
     (void) user_data;
-    ALOGE("Disconnected from input method server.\n");
-    ic = 0;
+    ALOGE("disconnected from input method server.");
 }
 
 xcb_xim_im_callback callback = {
@@ -1556,26 +1561,37 @@ xcb_xim_im_callback callback = {
 
 void create_ic_callback(xcb_xim_t *im, xcb_xic_t new_ic, void *user_data) {
     ALOGE("create_ic_callback called");
-    (void) user_data;
-    ic = new_ic;
-    if (ic) {
-        ALOGE("icid:%u\n", ic);
-        xcb_xim_set_ic_focus(im, ic);
+    //(void) user_data;
+    struct display* display = (struct display*)user_data;
+    if(!display){
+        ALOGE("error display is NULL");
+        return;
+    }
+    display->ic = new_ic;
+    if (display->ic) {
+        ALOGE("new ic id:%u ", display->ic);
+        xcb_xim_set_ic_focus(im, display->ic);
     }
 }
 
-void open_callback(xcb_xim_t *im, void *user_data) {
+void open_im_callback(xcb_xim_t *im, void *user_data) {
     ALOGE("open_callback called");
-    (void)user_data;
+    //(void)user_data;
+    struct display* display = (struct display*)user_data;
+    if(!display){
+        ALOGE("error display is NULL");
+        return;
+    }
+    ALOGE("display->w: %u", display->w);
     uint32_t input_style = XCB_IM_PreeditPosition | XCB_IM_StatusArea;
     xcb_point_t spot;
     spot.x = 800;
     spot.y = 500;
     xcb_xim_nested_list nested =
         xcb_xim_create_nested_list(im, XCB_XIM_XNSpotLocation, &spot, NULL);
-    xcb_xim_create_ic(im, create_ic_callback, NULL, XCB_XIM_XNInputStyle,
-                      &input_style, XCB_XIM_XNClientWindow, &w,
-                      XCB_XIM_XNFocusWindow, &w, XCB_XIM_XNPreeditAttributes,
+    xcb_xim_create_ic(im, create_ic_callback, display, XCB_XIM_XNInputStyle,
+                      &input_style, XCB_XIM_XNClientWindow, &display->w,
+                      XCB_XIM_XNFocusWindow, &display->w, XCB_XIM_XNPreeditAttributes,
                       &nested, NULL);
     free(nested.data);
 }
@@ -1729,27 +1745,17 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         display->colormap
     };
     ALOGE("create window for taskID: %s", taskID.c_str());
-    if(isValidInteger(taskID)){
-        if (display->xcbscreen) {
-            im = xcb_xim_create(display->xcbconnection, display->screen_default_nbr, NULL);
-            xcb_xim_set_im_callback(im, &callback, NULL);
-            xcb_xim_set_use_compound_text(im, true);
-            xcb_xim_set_use_utf8_string(im, true);
-
-            XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
-
-            // Open connection to XIM server.
-            bool result = xcb_xim_open(im, open_callback, true, NULL);
-            ALOGE("xcb_xim_open result = %d\n", result);
-        }else{
-            ALOGE("screen is null.");
-        }
-    }else{
-        ALOGE("the taskID: %s is not a normal app's", taskID.c_str());
-    }
-
     window->xcbwindow = xcb_generate_id(display->xcbconnection);
-    w = window->xcbwindow;
+    ALOGE("xcb create window window->xcbwindow: %u", window->xcbwindow);
+    display->w = window->xcbwindow;
+    XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
+
+    // Open connection to XIM server.
+    bool result = xcb_xim_open(display->im, open_im_callback, true, display);
+    ALOGE("xcb_xim_open result = %d", result);
+    if(!result){
+        return NULL;
+    }
     xcb_create_window(display->xcbconnection,
                     32,
                     window->xcbwindow,
@@ -1997,6 +2003,11 @@ create_display(const char *gralloc)
     display->screen_default_nbr = XDefaultScreen(display->x11display);
     ALOGE("XDefaultScreen display->screen_default_nbr: %d", display->screen_default_nbr);
 
+    display->im = xcb_xim_create(display->xcbconnection, display->screen_default_nbr, NULL);
+    xcb_xim_set_im_callback(display->im, &callback, display);
+    xcb_xim_set_use_compound_text(display->im, true);
+    xcb_xim_set_use_utf8_string(display->im, true);
+
     property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
     sem_init(&display->egl_done, 0, 0);
@@ -2055,7 +2066,6 @@ create_display(const char *gralloc)
         ALOGE("Unable to create event processing thread\n");
     }
 
-    localDisplay = display;
     return display;
 }
 
