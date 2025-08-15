@@ -1590,8 +1590,8 @@ void open_im_callback(xcb_xim_t *im, void *user_data) {
     xcb_xim_nested_list nested =
         xcb_xim_create_nested_list(im, XCB_XIM_XNSpotLocation, &spot, NULL);
     xcb_xim_create_ic(im, create_ic_callback, display, XCB_XIM_XNInputStyle,
-                      &input_style, XCB_XIM_XNClientWindow, &display->w,
-                      XCB_XIM_XNFocusWindow, &display->w, XCB_XIM_XNPreeditAttributes,
+                      &input_style, XCB_XIM_XNClientWindow, &display->xcbscreen->root,
+                      XCB_XIM_XNFocusWindow, &display->xcbscreen->root, XCB_XIM_XNPreeditAttributes,
                       &nested, NULL);
     free(nested.data);
 }
@@ -1750,12 +1750,6 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     display->w = window->xcbwindow;
     XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
 
-    // Open connection to XIM server.
-    bool result = xcb_xim_open(display->im, open_im_callback, true, display);
-    ALOGE("xcb_xim_open result = %d", result);
-    if(!result){
-        return NULL;
-    }
     xcb_create_window(display->xcbconnection,
                     32,
                     window->xcbwindow,
@@ -2007,6 +2001,13 @@ create_display(const char *gralloc)
     xcb_xim_set_im_callback(display->im, &callback, display);
     xcb_xim_set_use_compound_text(display->im, true);
     xcb_xim_set_use_utf8_string(display->im, true);
+
+    // Open connection to XIM server.
+    bool result = xcb_xim_open(display->im, open_im_callback, true, display);
+    ALOGE("xcb_xim_open result = %d", result);
+    if(!result){
+        return NULL;
+    }
 
     property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
