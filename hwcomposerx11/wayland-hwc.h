@@ -124,7 +124,6 @@ struct display {
     xcb_screen_t *xcbscreen;
     XRenderPictFormat *  argb_format;
     int screen_default_nbr;
-    xcb_window_t w;
     xcb_xic_t ic;
     xcb_xim_t *im;
 

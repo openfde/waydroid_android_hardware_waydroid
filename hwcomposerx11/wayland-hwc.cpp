@@ -510,7 +510,6 @@ struct wl_shell_surface_listener shell_surface_listener = {
 void
 destroy_window(struct window *window, bool keep)
 {
-    ALOGE("destroy window window->xcbwindow: %u", window->xcbwindow);
     if (window->backxpicture) {
         XRenderFreePicture(window->display->x11display, window->backxpicture);
         window->backxpicture = 0;
@@ -539,6 +538,7 @@ destroy_window(struct window *window, bool keep)
         window->xpicture = 0;
     }
      if (window->xcbwindow) {
+        ALOGE("destroy window window->xcbwindow: %u", window->xcbwindow);
         xcb_unmap_window(window->display->xcbconnection, window->xcbwindow);
         xcb_destroy_window(window->display->xcbconnection, window->xcbwindow);
         window->xcbwindow = 0;
@@ -1582,7 +1582,6 @@ void open_im_callback(xcb_xim_t *im, void *user_data) {
         ALOGE("error display is NULL");
         return;
     }
-    ALOGE("display->w: %u", display->w);
     uint32_t input_style = XCB_IM_PreeditPosition | XCB_IM_StatusArea;
     xcb_point_t spot;
     spot.x = 800;
@@ -1747,8 +1746,6 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     ALOGE("create window for taskID: %s", taskID.c_str());
     window->xcbwindow = xcb_generate_id(display->xcbconnection);
     ALOGE("xcb create window window->xcbwindow: %u", window->xcbwindow);
-    display->w = window->xcbwindow;
-    XSetEventQueueOwner(display->x11display, XCBOwnsEventQueue);
 
     xcb_create_window(display->xcbconnection,
                     32,
