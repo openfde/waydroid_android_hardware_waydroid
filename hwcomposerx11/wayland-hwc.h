@@ -146,13 +146,6 @@ struct display {
     std::map<struct wl_surface *, struct window *> windows;
     std::map<std::string, struct window *> *x11_windows;
     std::mutex windowsMutex;
-    std::map<int, struct wl_surface *> touch_surfaces;
-    struct wl_surface *pointer_surface;
-    struct wl_surface *cursor_surface;
-    struct wp_viewport *cursor_viewport;
-    struct wl_surface *tablet_surface;
-    std::list<struct zwp_tablet_tool_v2 *> tablet_tools;
-    std::map<struct zwp_tablet_tool_v2 *, uint16_t> tablet_tools_evt;
 
     EGLDisplay egl_dpy;
     std::list<std::function<void()>> egl_work_queue;
@@ -185,7 +178,6 @@ struct display {
 };
 
 struct buffer {
-	int prime_fd;
     struct wl_buffer *buffer;
     struct wp_presentation_feedback *feedback;
     xcb_pixmap_t xcbpixmap;
@@ -269,21 +261,6 @@ struct window {
     std::vector<xcb_rectangle_t> rects;
     std::vector<hwc_rect_t> crops;
     
-    struct wl_surface *surface;
-    struct wp_viewport *viewport;
-    struct wl_shell_surface *shell_surface;
-    struct xdg_surface *xdg_surface;
-    struct xdg_toplevel *xdg_toplevel;
-    struct wp_viewport *bg_viewport;
-    struct wl_buffer *bg_buffer;
-    struct wl_surface *bg_surface;
-    struct wl_subsurface *bg_subsurface;
-    struct zwp_locked_pointer_v1 *locked_pointer;
-    struct zwp_idle_inhibitor_v1 *idle_inhibitor;
-    std::map<size_t, struct wl_surface *> surfaces;
-    std::map<size_t, struct wl_subsurface *> subsurfaces;
-    std::map<size_t, struct wp_viewport *> viewports;
-    struct wl_callback *callback;
     struct buffer *last_layer_buffer;
     struct buffer *snapshot_buffer;
     int lastLayer;

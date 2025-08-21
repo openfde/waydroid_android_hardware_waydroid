@@ -88,16 +88,10 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         xcb_free_pixmap(display->xcbconnection, buf->xcbpixmap);
         buf->xcbpixmap = 0;
     }
-    if (buf->prime_fd) {
-
-    }
     if (buf->xpicture) {
         XRenderFreePicture(display->x11display, buf->xpicture);
         buf->xpicture = 0;
     }
-    // wl_buffer_destroy(buf->buffer);
-    // if (buf->isShm)
-    //     munmap(buf->shm_data, buf->size);
     delete buf;
 }
 
@@ -217,94 +211,6 @@ void choose_width_height(struct display* display, int32_t hint_width, int32_t hi
     display->height = height;
 }
 
-/*static void
-xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
-                              int32_t width, int32_t height,
-                              struct wl_array *)
-{
-    struct window *window = (struct window *)data;
-    struct display *display = window->display;
-
-    if (width == 0 || height == 0) {
-    */
-		/* Compositor is deferring to us */
-/*		return;
-	}
-
-    if (!display->width || !display->height) {
-        choose_width_height(display, width, height);
-        if (!display->isMaximized)
-            xdg_toplevel_unset_maximized(window->xdg_toplevel);
-    }
-}
-
-static void
-send_key_event(display *data, uint32_t key, wl_keyboard_key_state state);
-
-static void
-xdg_toplevel_handle_close(void *data, struct xdg_toplevel *)
-{
-    struct window *window = (struct window *)data;
-
-    // simulate user input to restart idle timeout (TODO: find a better way)
-    send_key_event(window->display, 0, WL_KEYBOARD_KEY_STATE_PRESSED);
-    send_key_event(window->display, 0, WL_KEYBOARD_KEY_STATE_RELEASED);
-
-    if (window->display->task != nullptr) {
-        if (window->taskID != "none") {
-            if (window->taskID == "0") {
-                property_set("waydroid.active_apps", "none");
-                window->display->task->removeAllVisibleRecentTasks();
-            } else {
-                window->display->task->removeTask(stoi(window->taskID));
-            }
-        }
-    }
-
-    std::scoped_lock lock(window->display->windowsMutex);
-    destroy_window( window, true);
-}
-
-static const struct xdg_toplevel_listener xdg_toplevel_listener = {
-    xdg_toplevel_handle_configure,
-    xdg_toplevel_handle_close,
-};
-
-void
-shell_surface_ping(void *, struct wl_shell_surface *shell_surface, uint32_t serial)
-{
-    wl_shell_surface_pong(shell_surface, serial);
-}
-
-void
-shell_surface_configure(void *data, struct wl_shell_surface *, uint32_t, int32_t width, int32_t height)
-{
-    struct window *window = (struct window *)data;
-    struct display *display = window->display;
-
-    if (width == 0 || height == 0) {
-    */
-		/* Compositor is deferring to us */
-/*		return;
-	}
-
-    if (!display->width || !display->height) {
-        choose_width_height(display, width, height);
-    }
-}
-
-void
-shell_surface_popup_done(void *, struct wl_shell_surface *)
-{
-}
-
-struct wl_shell_surface_listener shell_surface_listener = {
-	&shell_surface_ping,
-	&shell_surface_configure,
-	&shell_surface_popup_done
-};
-*/
-
 void
 destroy_window(struct window *window, bool keep)
 {
@@ -342,61 +248,12 @@ destroy_window(struct window *window, bool keep)
         window->xcbwindow = 0;
     }
     xcb_flush(window->display->xcbconnection);
-
- /*   if (window->isActive) {
-        if (window->callback)
-            wl_callback_destroy(window->callback);
-
-        for (auto it = window->surfaces.begin(); it != window->surfaces.end(); it++) {
-            if (window->viewports[it->first])
-                wp_viewport_destroy(window->viewports[it->first]);
-            wl_subsurface_destroy(window->subsurfaces[it->first]);
-            wl_surface_destroy(it->second);
-        }
-        if (window->xdg_toplevel)
-            xdg_toplevel_destroy(window->xdg_toplevel);
-        if (window->xdg_surface)
-            xdg_surface_destroy(window->xdg_surface);
-        if (window->shell_surface)
-            wl_shell_surface_destroy(window->shell_surface);
-        if (window->bg_viewport)
-            wp_viewport_destroy(window->bg_viewport);
-        if (window->bg_subsurface)
-            wl_subsurface_destroy(window->bg_subsurface);
-        if (window->bg_surface)
-            wl_surface_destroy(window->bg_surface);
-        if (window->bg_buffer)
-            wl_buffer_destroy(window->bg_buffer);
-        if (window->viewport)
-            wp_viewport_destroy(window->viewport);
-
-        wl_surface_destroy(window->surface);
-        wl_display_flush(window->display->display);
-
-        window->display->windows.erase(window->surface);
-    }
-    */
     if (keep)
         window->isActive = false;
     else
         delete window;
 }
 
-/*static void fractional_scale_handle_preferred_scale(void *data, struct wp_fractional_scale_v1 *,
-            uint32_t scale_times_120) {
-    struct display *display = (struct display *)data;
-    if (!display->viewporter) {
-        // We should always have the viewporter if we have the fractional scale manager
-        // but for debugging purpuses we may decide to disable one
-        return;
-    }
-    display->scale = scale_times_120 / 120.0;
-}
-
-static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {
-    .preferred_scale = fractional_scale_handle_preferred_scale
-};
-*/
 
 
 static int
@@ -1272,6 +1129,7 @@ void *event_loop_thread(void *arg) {
     if(display->im){
         xcb_xim_close(display->im);
         xcb_xim_destroy(display->im);
+	display->im = NULL;
     }
 
     ALOGE("Exiting XCB event loop");
@@ -1455,16 +1313,10 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
         return NULL;
 
     std::string appID_title;
-    window->callback = NULL;
     window->display = display;
-    // window->surface = wl_compositor_create_surface(display->compositor);
     window->appID = appID;
     window->taskID = taskID;
     window->isActive = true;
-    window->bg_viewport = NULL;
-    window->bg_buffer = NULL;
-    window->bg_surface = NULL;
-    window->bg_subsurface = NULL;
     window->xcbwindow = 0;
 
     bool calibrating = !display->height || !display->width;

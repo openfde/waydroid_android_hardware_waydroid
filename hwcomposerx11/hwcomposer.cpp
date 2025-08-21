@@ -1422,13 +1422,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 // This window has no changes in layers, leaving it
                 if (!it->second->lastLayer)
                     continue;
-                // Neutralize unused surfaces
-                for (size_t l = it->second->lastLayer; l < it->second->surfaces.size(); l++) {
-                    if (it->second->surfaces.find(l) != it->second->surfaces.end()) {
-                        // wl_surface_attach(it->second->surfaces[l], NULL, 0, 0);
-                        // wl_surface_commit(it->second->surfaces[l]);
-                    }
-                }
                 // Clear the window's back xpicture
 		if (it->second->backxpicture) {
 			XRenderColor clear_color = {0, 0, 0, 0}; // Transparent black
@@ -1439,26 +1432,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         }
         pdev->display->geo_changed = false;
     }
-
-    // if (!pdev->multi_windows && single_layer_tid.length() && active_apps != "Openfde") {
-    //     for (auto const& [layer_tid, window] : pdev->windows) {
-    //         // Replace inactive app window buffer with snapshot in staged mode
-    //         if (layer_tid != single_layer_tid && !window->snapshot_buffer) {
-    //             pdev->display->egl_work_queue.push_back(std::bind(snapshot_inactive_app_window, pdev->display, window));
-    //         }
-    //     }
-    //     if (!pdev->display->egl_work_queue.empty()) {
-    //         sem_post(&pdev->display->egl_go);
-    //         sem_wait(&pdev->display->egl_done);
-    //     }
-    // }
-
-     //if (pdev->use_subsurface)
-      //   for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
-       //      if (it->second)
-                 //wl_surface_commit(it->second->surface);
-     xcb_flush(pdev->display->xcbconnection); // 确保请求发送
-    // wl_display_flush(pdev->display->display);
+    xcb_flush(pdev->display->xcbconnection); // 确保请求发送
 
 sync:
     sw_sync_timeline_inc(pdev->timeline_fd, 1);
