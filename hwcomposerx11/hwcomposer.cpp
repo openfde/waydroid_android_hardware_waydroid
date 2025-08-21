@@ -168,52 +168,6 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
     pdev->display->additional_refresh_cursor_times++;
     return true;
 }
-    /*
-     * To update the wayland cursor, the fde.mouse_icon_addr system property was introduced.
-     * When the internal mouse shape changes, its value will change accordingly.
-     * Its value is set by SpriteController and PointerController.
-     */
-    /*int64_t mouse_icon_addr = property_get_int64("fde.mouse_icon_addr", 0);
-    if (pdev->display->mouse_icon_addr != mouse_icon_addr) {
-        pdev->display->mouse_icon_addr = mouse_icon_addr;
-        pdev->display->additional_refresh_cursor_times = 0;
-        erase_cursor_layer_buffer(pdev, fb_layer->handle);
-    }else{
-        if(pdev->display->additional_refresh_cursor_times > 3){      //Refresh the wayland cursor three additional times
-            return true;
-        }else{
-            erase_cursor_layer_buffer(pdev, fb_layer->handle);
-        }
-    }
-
-    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
-    if (!buf) {
-        ALOGE("Failed to get wayland buffer");
-        return true;
-    }
-
-    // wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
-    // if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-    //     wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-    // else
-    //     wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-    // if (!pdev->display->viewporter && pdev->display->scale > 1) {
-    //     // With no viewporter the scale is guaranteed to be integer
-    //     wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
-    // } else if (pdev->display->viewporter && pdev->display->scale != 1) {
-    //     setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
-    // }
-
-    // wl_surface_commit(pdev->display->cursor_surface);
-    //int32_t icon_hotspot_x = property_get_int32("fde.mouse_icon_hotspot_x", 5);
-    //int32_t icon_hotspot_y = property_get_int32("fde.mouse_icon_hotspot_y", 5);
-    // wl_pointer_set_cursor(pdev->display->pointer, pdev->display->serial,
-    //                               pdev->display->cursor_surface, icon_hotspot_x, icon_hotspot_y);
-    pdev->display->additional_refresh_cursor_times++;
-
-    return true;
-}
-*/
 
 
 static int set_black_background(struct waydroid_hwc_composer_device_1 * pdev, struct window * win){
@@ -707,73 +661,6 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
     return 0;
 }
 
-/*static struct wl_surface *get_surface(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, bool multi)
-{
-    pdev->display->windows[window->surface] = window;
-    if (!multi) {
-        pdev->display->layers[window->surface] = {
-            .x = layer->displayFrame.left,
-            .y = layer->displayFrame.top };
-        if (!multi && pdev->display->scale != 1 && pdev->display->viewporter && !window->viewport) {
-            window->viewport = wp_viewporter_get_viewport(pdev->display->viewporter, window->surface);
-            setup_viewport_destination(window->viewport, layer->displayFrame, pdev->display);
-        }
-        return window->surface;
-    }
-
-    struct wl_surface *surface = NULL;
-    struct wl_subsurface *subsurface = NULL;
-    struct wp_viewport *viewport = NULL;
-
-    if (window->surfaces.find(window->lastLayer) == window->surfaces.end()) {
-        surface = wl_compositor_create_surface(pdev->display->compositor);
-        subsurface = wl_subcompositor_get_subsurface(pdev->display->subcompositor,
-                                                     surface,
-                                                     window->surface);
-        if (pdev->display->viewporter)
-            viewport = wp_viewporter_get_viewport(pdev->display->viewporter, surface);
-        window->surfaces[window->lastLayer] = surface;
-        window->subsurfaces[window->lastLayer] = subsurface;
-        window->viewports[window->lastLayer] = viewport;
-    }
-
-    hwc_rect_t sourceCrop = layer->sourceCropi;
-
-    if (layer->transform & HWC_TRANSFORM_ROT_90) {
-        sourceCrop.left = layer->sourceCropi.top;
-        sourceCrop.top = layer->sourceCropi.left;
-        sourceCrop.right = layer->sourceCropi.bottom;
-        sourceCrop.bottom = layer->sourceCropi.right;
-    }
-    ALOGE("frame geo left %d top %d right %d bottom %d lastlayer %d", sourceCrop.left,sourceCrop.top, sourceCrop.right,sourceCrop.bottom, window->lastLayer);
-
-    if (pdev->display->viewporter) {
-        wp_viewport_set_source(window->viewports[window->lastLayer],
-                               wl_fixed_from_double(fmax(0, pdev->display->viewporter ? sourceCrop.left : sourceCrop.left / pdev->display->scale)),
-                               wl_fixed_from_double(fmax(0, pdev->display->viewporter ? sourceCrop.top : sourceCrop.top / pdev->display->scale)),
-                               wl_fixed_from_double(fmax(1, pdev->display->viewporter ? (sourceCrop.right - sourceCrop.left) :
-                                                                                        (sourceCrop.right - sourceCrop.left) / pdev->display->scale)),
-                               wl_fixed_from_double(fmax(1, pdev->display->viewporter ? (sourceCrop.bottom - sourceCrop.top) :
-                                                                                        (sourceCrop.bottom - sourceCrop.top) / pdev->display->scale)));
-
-        setup_viewport_destination(window->viewports[window->lastLayer], layer->displayFrame, pdev->display);
-    }
-
-    xcb_configure_window_value_list_t values;
-    values.x = floor(layer->displayFrame.left / pdev->display->scale);
-    values.y = floor(layer->displayFrame.top / pdev->display->scale);
-    wl_subsurface_set_position(window->subsurfaces[window->lastLayer],
-                               floor(layer->displayFrame.left / pdev->display->scale),
-                               floor(layer->displayFrame.top / pdev->display->scale));
-
-    pdev->display->layers[window->surfaces[window->lastLayer]] = {
-        .x = layer->displayFrame.left,
-        .y = layer->displayFrame.top };
-    ALOGE("frame left %d top %d lastlayer %d", layer->displayFrame.left,layer->displayFrame.top,window->lastLayer);
-    return window->surfaces[window->lastLayer];
-}
-*/
-
 static long time_to_sleep_to_next_vsync(struct timespec *rt, uint64_t last_vsync_ns, unsigned vsync_period_ns)
 {
     uint64_t now = (uint64_t)rt->tv_sec * 1e9 + rt->tv_nsec;
@@ -1253,12 +1140,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         // TODO: Implement per-layer explicit synchronization
         fb_layer->releaseFenceFd = -1;
 
-        // struct wl_surface *surface = get_surface(pdev, fb_layer, window, pdev->use_subsurface);
-        // if (!surface) {
-        //     ALOGE("Failed to get surface");
-        //     continue;
-        // }
-	//
 	XTransform transform;
         switch (fb_layer->transform) {
              case HWC_TRANSFORM_FLIP_H:
@@ -1352,34 +1233,14 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         if (pdev->use_subsurface ) {
         	adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
         }else {
-	     XRenderComposite(pdev->display->x11display, PictOpSrc, buf->xpicture, None, window->xpicture,
-		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
+	     	XRenderComposite(pdev->display->x11display, PictOpSrc, buf->xpicture, None, window->xpicture,
+		   	 0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
         }
         window->last_layer_buffer = buf;
         window->lastLayer++;
 
-        // wl_surface_attach(surface, buf->buffer, 0, 0);
-        // if (wl_surface_get_version(surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-        //     wl_surface_damage_buffer(surface, 0, 0, buf->width, buf->height);
-        // else
-        //     wl_surface_damage(surface, 0, 0, buf->width, buf->height);
-        // if (!pdev->display->viewporter && pdev->display->scale > 1) {
-        //     // With no viewporter the scale is guaranteed to be integer
-        //     wl_surface_set_buffer_scale(surface, (int)pdev->display->scale);
-        // }
-
-        // struct wp_presentation *pres = window->display->presentation;
-        // if (pres) {
-        //     buf->feedback = wp_presentation_feedback(pres, surface);
-        //     wp_presentation_feedback_add_listener(buf->feedback,
-        //                       &feedback_listener, pdev);
-        // }
-      
-
-        // wl_surface_commit(surface);
-
         if (window->snapshot_buffer) {
-            // Snapshot buffer should be detached by now, clean up
+           // Snapshot buffer should be detached by now, clean up
             destroy_buffer(pdev->display,window->snapshot_buffer);
             window->snapshot_buffer = nullptr;
         }
@@ -1388,7 +1249,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         err = sync_wait(fb_layer->acquireFenceFd, kAcquireWarningMS);
         if (err < 0 && errno == ETIME) {
             ALOGE("hwcomposer waited on fence %d for %d ms",
-                fb_layer->acquireFenceFd, kAcquireWarningMS);
+            fb_layer->acquireFenceFd, kAcquireWarningMS);
         }
         close(fb_layer->acquireFenceFd);
     }
@@ -1397,12 +1258,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
      if (pdev->use_subsurface)
          for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
              if (it->second){
-		     if (it->second->rects.size() > 1)
-		     {
+		if (it->second->rects.size() > 1)
+	    	{
 			set_black_background(pdev,it->second);
-		     }
+		}
 	     	XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
-		    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
+		   	 0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
 		if (!it->second->rects.empty()) {
                     xcb_shape_rectangles(pdev->display->xcbconnection,
                                         XCB_SHAPE_SO_SET,      // 设置操作
@@ -1412,9 +1273,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                                         0, 0,
                                         it->second->rects.size(),
                                         it->second->rects.data());
-                }
-                //wl_surface_commit(it->second->surface);
-	     }
+               		}
+	     	}
     XFlush(pdev->display->x11display);
     if (pdev->display->geo_changed) {
         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
@@ -1426,7 +1286,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 		if (it->second->backxpicture) {
 			XRenderColor clear_color = {0, 0, 0, 0}; // Transparent black
 			XRenderFillRectangle(pdev->display->x11display, PictOpClear, it->second->backxpicture, &clear_color, 
-					    0, 0, pdev->display->width, pdev->display->height);
+			    0, 0, pdev->display->width, pdev->display->height);
 		}
             }
         }
