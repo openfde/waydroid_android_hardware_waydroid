@@ -116,7 +116,6 @@ struct handleExt {
 struct window;
 
 struct display {
-    struct wl_display *display;
     xcb_visualid_t visualid;
     xcb_colormap_t colormap;
     Display * x11display;
@@ -126,32 +125,6 @@ struct display {
     int screen_default_nbr;
     xcb_xic_t ic;
     xcb_xim_t *im;
-
-    struct wl_registry *registry;
-    struct wl_compositor *compositor;
-    struct wl_subcompositor *subcompositor;
-    struct wl_seat *seat;
-    struct wl_shell *shell;
-    struct wl_shm *shm;
-    struct wl_pointer *pointer;
-    struct wl_keyboard *keyboard;
-    struct wl_touch *touch;
-    struct wl_output *output;
-    struct wp_presentation *presentation;
-    struct wp_viewporter *viewporter;
-    struct android_wlegl *android_wlegl;
-    struct zwp_linux_dmabuf_v1 *dmabuf;
-    struct xdg_wm_base *wm_base;
-    struct zwp_tablet_manager_v2* tablet_manager;
-    struct zwp_tablet_seat_v2 *tablet_seat;
-    struct zwp_pointer_constraints_v1 *pointer_constraints;
-    struct zwp_relative_pointer_manager_v1 *relative_pointer_manager;
-    struct zwp_relative_pointer_v1 *relative_pointer;
-    struct zwp_idle_inhibit_manager_v1 *idle_manager;
-    struct wp_fractional_scale_manager_v1 *fractional_scale_manager;
-    struct zwp_pointer_gestures_v1 *pointer_gestures;
-    struct zwp_pointer_gesture_swipe_v1 *pointer_gestures_swipe;
-    struct zwp_pointer_gesture_pinch_v1 *pointer_gestures_pinch;
     int gtype;
     double scale;
  
@@ -325,21 +298,6 @@ handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
 
 void
 destroy_buffer(struct display *display ,struct buffer* buf);
-
-int
-create_android_wl_buffer(struct display *display, struct buffer *buffer,
-             int width, int height, int format,
-             int pixel_stride, buffer_handle_t target);
-
-int
-create_dmabuf_wl_buffer(struct display *display, struct buffer *buffer,
-             int width, int height, int hal_format, int format,
-             int prime_fd, int pixel_stride, int byte_stride,
-             int offset, uint64_t modifier, buffer_handle_t target);
-
-int
-create_shm_wl_buffer(struct display *display, struct buffer *buffer,
-             int width, int height, int format, int pixel_stride, buffer_handle_t target);
 
 void
 snapshot_inactive_app_window(struct display *display, struct window *window);

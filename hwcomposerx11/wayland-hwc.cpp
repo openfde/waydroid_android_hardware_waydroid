@@ -128,77 +128,6 @@ get_gralloc_type(const char *gralloc)
     }
 }
 
-static void
-buffer_release(void *, struct wl_buffer *)
-{
-}
-
-static const struct wl_buffer_listener buffer_listener = {
-    buffer_release
-};
-
-int
-create_android_wl_buffer(struct display *display, struct buffer *buffer,
-             int width, int height, int format,
-             int pixel_stride, buffer_handle_t target)
-{
-    struct android_wlegl_handle *wlegl_handle;
-    struct wl_array ints;
-    int *the_ints;
-
-    buffer->width = width;
-    buffer->height = height;
-    buffer->format = buffer->hal_format = format;
-    buffer->pixel_stride = pixel_stride;
-    buffer->handle = target;
-
-    wl_array_init(&ints);
-    the_ints = (int *)wl_array_add(&ints, target->numInts * sizeof(int));
-    memcpy(the_ints, target->data + target->numFds, target->numInts * sizeof(int));
-    wlegl_handle = android_wlegl_create_handle(display->android_wlegl, target->numFds, &ints);
-    wl_array_release(&ints);
-
-    for (int i = 0; i < target->numFds; i++) {
-        android_wlegl_handle_add_fd(wlegl_handle, target->data[i]);
-    }
-
-    buffer->buffer = android_wlegl_create_buffer(display->android_wlegl, buffer->width, buffer->height, buffer->pixel_stride, buffer->format, GRALLOC_USAGE_HW_RENDER, wlegl_handle);
-    android_wlegl_handle_destroy(wlegl_handle);
-
-    wl_buffer_add_listener(buffer->buffer, &buffer_listener, buffer);
-
-    return 0;
-}
-
-static void
-create_succeeded(void *data,
-         struct zwp_linux_buffer_params_v1 *params,
-         struct wl_buffer *new_buffer)
-{
-    struct buffer *buffer = (struct buffer*)data;
-
-    buffer->buffer = new_buffer;
-    wl_buffer_add_listener(buffer->buffer, &buffer_listener, buffer);
-
-    zwp_linux_buffer_params_v1_destroy(params);
-}
-
-static void
-create_failed(void *data, struct zwp_linux_buffer_params_v1 *params)
-{
-    struct buffer *buffer = (struct buffer*)data;
-
-    buffer->buffer = NULL;
-
-    zwp_linux_buffer_params_v1_destroy(params);
-
-    ALOGE("%s: zwp_linux_buffer_params.create failed.", __func__);
-}
-
-static const struct zwp_linux_buffer_params_v1_listener params_listener = {
-    create_succeeded,
-    create_failed
-};
 
 bool isFormatSupported(struct display *display, uint32_t format) {
     for (int i = 0; i < display->formats_count; i++) {
@@ -253,138 +182,7 @@ int ConvertHalFormatToDrm(struct display *display, uint32_t hal_format) {
     return fmt;
 }
 
-int
-create_dmabuf_wl_buffer(struct display *display, struct buffer *buffer,
-             int width, int height, int hal_format, int format,
-             int prime_fd, int pixel_stride, int byte_stride,
-             int offset, uint64_t modifier, buffer_handle_t target)
-{
-    struct zwp_linux_buffer_params_v1 *params;
 
-    assert(prime_fd >= 0);
-    buffer->hal_format = hal_format;
-    buffer->format = (format >= 0) ? format : ConvertHalFormatToDrm(display, hal_format);
-    assert(buffer->format >= 0);
-    buffer->width = width;
-    buffer->height = height;
-    buffer->pixel_stride = pixel_stride;
-    buffer->handle = target;
-
-    params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
-    zwp_linux_buffer_params_v1_add(params, prime_fd, 0, offset, byte_stride, modifier >> 32, modifier & 0xffffffff);
-    zwp_linux_buffer_params_v1_add_listener(params, &params_listener, buffer);
-
-    buffer->buffer = zwp_linux_buffer_params_v1_create_immed(params, buffer->width, buffer->height, buffer->format, 0);
-    wl_buffer_add_listener(buffer->buffer, &buffer_listener, buffer);
-
-    return 0;
-}
-
-static int
-ConvertHalFormatToShm(uint32_t hal_format) {
-    uint32_t fmt;
-
-    switch (hal_format) {
-        case HAL_PIXEL_FORMAT_RGBX_8888:
-            fmt = WL_SHM_FORMAT_XRGB8888;
-            break;
-        case HAL_PIXEL_FORMAT_RGBA_8888:
-        case HAL_PIXEL_FORMAT_BGRA_8888:
-            fmt = WL_SHM_FORMAT_ARGB8888;
-            break;
-        default:
-            ALOGE("Cannot convert hal format to shm format %u", hal_format);
-            return -EINVAL;
-    }
-    return fmt;
-}
-
-int
-create_shm_wl_buffer(struct display *display, struct buffer *buffer,
-             int width, int height, int format, int pixel_stride, buffer_handle_t target)
-{
-    // Assume 4bpp formats or none of this is going to work
-    int shm_stride = width * 4;
-    int size = shm_stride * height;
-
-    buffer->size = size;
-    buffer->hal_format = format;
-    buffer->format = ConvertHalFormatToShm(format);
-    assert(buffer->format >= 0);
-    buffer->width = width;
-    buffer->height = height;
-    buffer->pixel_stride = pixel_stride;
-    buffer->handle = target;
-    buffer->isShm = true;
-
-    int fd = syscall(__NR_memfd_create, "buffer", MFD_ALLOW_SEALING);
-    ftruncate(fd, size);
-    buffer->shm_data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (buffer->shm_data == MAP_FAILED) {
-        ALOGE("mmap failed");
-        close(fd);
-
-        return -1;
-    }
-    struct wl_shm_pool *pool = wl_shm_create_pool(display->shm, fd, size);
-    buffer->buffer = wl_shm_pool_create_buffer(pool, 0, width, height, shm_stride, buffer->format);
-    wl_buffer_add_listener(buffer->buffer, &buffer_listener, buffer);
-    wl_shm_pool_destroy(pool);
-    close(fd);
-
-    return 0;
-}
-
-// Call me from egl_worker_thread only!
-/*void snapshot_inactive_app_window(struct display *display, struct window *window) {
-    if (!window->surface || !window->last_layer_buffer
-        || window->last_layer_buffer->isShm || window->snapshot_buffer) {
-        // Need a surface to draw and a non-SHM buffer to make snapshot from
-        return;
-    }
-
-    ALOGI("Making inactive window snapshot for %s", window->taskID.c_str());
-
-    struct buffer *old_buf = window->last_layer_buffer;
-    struct buffer *new_buf = new struct buffer();
-    // FIXME won't work as expected if there are multiple surfaces
-    struct wl_surface *surface = window->surface;
-
-    int ret = create_shm_wl_buffer(display, new_buf, old_buf->width, old_buf->height,
-                                    HAL_PIXEL_FORMAT_RGBA_8888, old_buf->pixel_stride, old_buf->handle);
-    if (ret) {
-        ALOGE("failed to create a wayland buffer for window snapshot");
-        return;
-    }
-
-    egl_render_to_pixels(display, new_buf);
-
-    wl_surface_attach(surface, new_buf->buffer, 0, 0);
-    if (wl_surface_get_version(surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-        wl_surface_damage_buffer(surface, 0, 0, new_buf->width, new_buf->height);
-    else
-        wl_surface_damage(surface, 0, 0, new_buf->width, new_buf->height);
-    if (!display->viewporter && display->scale > 1) {
-        // With no viewporter the scale is guaranteed to be integer
-        wl_surface_set_buffer_scale(surface, (int)display->scale);
-    }
-    wl_surface_commit(surface);
-
-    window->snapshot_buffer = new_buf;
-}
-
-static void
-xdg_surface_handle_configure(void *, struct xdg_surface *surface,
-                 uint32_t serial)
-{
-    xdg_surface_ack_configure(surface, serial);
-}
-
-static const struct xdg_surface_listener xdg_surface_listener = {
-    xdg_surface_handle_configure,
-};
-
-*/
 
 static void
 finished_computing_scale(struct display *d)
@@ -1678,51 +1476,15 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
             display->task->getAppName(appID_hidl, [&](const hidl_string &value)
                                       {
 				       appID_title = value;
-				    //   xdg_toplevel_set_title(window->xdg_toplevel, value.c_str()); 
                     });
         else{
-            // xdg_toplevel_set_title(window->xdg_toplevel, appID.c_str());
 	     appID_title = appID;
 	}
 
         if (appID != "Openfde")
             appID = "openfde." + appID;
-        // xdg_toplevel_set_app_id(window->xdg_toplevel, appID.c_str());
-    // } else if (display->shell) {
-    //     window->shell_surface =
-    //         wl_shell_get_shell_surface(display->shell, window->surface);
-    //     assert(window->shell_surface);
-
-    //     wl_shell_surface_add_listener(window->shell_surface, &shell_surface_listener, window);
-    //     wl_shell_surface_set_toplevel(window->shell_surface);
-    //     if (display->isMaximized || !display->height || !display->width)
-    //         wl_shell_surface_set_maximized(window->shell_surface, display->output);
-    //     const hidl_string appID_hidl(appID);
-    //     hidl_string appName_hidl(appID);
-    //     if (appID != "Openfde" && display->task)
-    //         display->task->getAppName(appID_hidl, [&](const hidl_string &value)
-    //                                   { wl_shell_surface_set_title(window->shell_surface, value.c_str()); });
-    //     else
-    //         wl_shell_surface_set_title(window->shell_surface, appID.c_str());
-    // } else {
-    //     assert(0);
-    // }
-
-    // if (calibrating && display->fractional_scale_manager) {
-    //     // We only support one global scale
-    //     wp_fractional_scale_v1* fs = wp_fractional_scale_manager_v1_get_fractional_scale(
-    //             display->fractional_scale_manager, window->surface);
-    //     wp_fractional_scale_v1_add_listener(fs, &fractional_scale_listener, display);
-    //     wl_display_roundtrip(display->display);
-    //     wp_fractional_scale_v1_destroy(fs);
-    // }
+   
     finished_computing_scale(display);
-
-    // wl_surface_commit(window->surface);
-
-    /* Here we retrieve objects if executed without immed, or error */
-    // wl_display_roundtrip(display->display);
-    // wl_surface_commit(window->surface);
 
     if (calibrating) {
         // If we did not receive a window size from the compositor we have to fall back to using the whole output size
@@ -1737,7 +1499,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
 
     uint32_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP;
     uint32_t value_list[] = {
-        0,  // 设置不透明的黑色背景，避免窗口透明
+        0, 
         0,
         XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
         XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_FOCUS_CHANGE,
@@ -1863,77 +1625,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     set_window_class(display->xcbconnection, window->xcbwindow, window->appID, window->appID);
 
     xcb_map_window(display->xcbconnection, window->xcbwindow);
-    ALOGE("gy xcreate xcb window %s color %d, width %d height %d",appID_title.c_str(),color.a, display->width,display->height);
-
-/*
-    window->xcbgc = xcb_generate_id(display->xcbconnection);
-    xcb_create_gc(display->xcbconnection,window->xcbgc, window->xcbwindow, 0, NULL);
-
-    xcb_dri3_open_cookie_t dri3_cookie = xcb_dri3_open(display->xcbconnection, window->xcbwindow, 0);
-    xcb_dri3_open_reply_t *dri3_reply = xcb_dri3_open_reply(display->xcbconnection, dri3_cookie, NULL);
-    if (!dri3_reply) {
-        ALOGE("Cannot open DRI3 connection");
-    }
-    window->dri3_fd = dri3_reply->nfd > 0 ? xcb_dri3_open_reply_fds(display->xcbconnection, dri3_reply)[0] : -1;
-    free(dri3_reply);
-    if (window->dri3_fd < 0) {
-        ALOGE("Cannot get DRI3 file descriptor");
-    }
-    xcb_map_window(display->xcbconnection, window->xcbwindow);
-    */
-
-    // No subsurface background for us!
-    // if (!use_subsurfaces && !display->subcompositor)
-    //     return window;
-
-    // int fd = syscall(SYS_memfd_create, "buffer", 0);
-    // ftruncate(fd, 4);
-    // void *shm_data = mmap(NULL, 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    // if (shm_data == MAP_FAILED) {
-    //     ALOGE("mmap failed");
-    //     close(fd);
-    //     exit(1);
-    // }
-    // uint32_t *buf = (uint32_t*)shm_data;
-    // *buf = color.a << 24 | color.r << 16 | color.g << 8 | color.b;
-
-    // struct wl_shm_pool *pool = wl_shm_create_pool(display->shm, fd, 4);
-    // window->bg_buffer = wl_shm_pool_create_buffer(pool, 0, 1, 1, 4, WL_SHM_FORMAT_ARGB8888);
-    // wl_shm_pool_destroy(pool);
-    // close(fd);
-
-    // struct wl_surface *surface = window->surface;
-    // if (!use_subsurfaces) {
-    //     surface = wl_compositor_create_surface(display->compositor);
-    //     struct wl_subsurface *subsurface = wl_subcompositor_get_subsurface(display->subcompositor, surface, window->surface);
-    //     wl_subsurface_place_below(subsurface, window->surface);
-    //     window->bg_surface = surface;
-    //     window->bg_subsurface = subsurface;
-    // }
-
-    // wl_surface_attach(surface, window->bg_buffer, 0, 0);
-    // wl_surface_damage_buffer(surface, 0, 0, 1, 1);
-
-    // if (display->viewporter) {
-    //     window->bg_viewport = wp_viewporter_get_viewport(display->viewporter, surface);
-    //     wp_viewport_set_source(window->bg_viewport, wl_fixed_from_int(0), wl_fixed_from_int(0), wl_fixed_from_int(1), wl_fixed_from_int(1));
-    //     wp_viewport_set_destination(window->bg_viewport, display->width, display->height);
-    // }
-
-    // if (display->wm_base)
-    //     xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, display->width, display->height);
-
-    // struct wl_region *region = wl_compositor_create_region(display->compositor);
-    // if (color.a == 0) {
-    //     wl_surface_set_input_region(surface, region);
-    // }
-    // if (color.a == 255) {
-    //     wl_region_add(region, 0, 0, display->width, display->height);
-    //     wl_surface_set_opaque_region(surface, region);
-    // }
-    // wl_region_destroy(region);
-
-    // wl_surface_commit(surface);
+    ALOGI("xcreate xcb window %s color %d, width %d height %d",appID_title.c_str(),color.a, display->width,display->height);
 
     return window;
 }
@@ -1961,17 +1653,9 @@ create_display(const char *gralloc)
         ALOGE("out of memory");
         return NULL;
     }
-    // wl_log_set_handler_client(wayland_log_handler);
     display->gtype = get_gralloc_type(gralloc);
     display->refresh = 0;
     display->isMaximized = true;
-    // display->display = wl_display_connect(NULL);
-    // ALOGI("WAYLAND_DISPLAY: %s", getenv("WAYLAND_DISPLAY"));
-    // ALOGI("XDG_RUNTIME_DIR: %s", getenv("XDG_RUNTIME_DIR"));
-    // if (!display->display) {
-    //     ALOGE("Couldn't open Wayland display.");
-    //     return NULL;
-    // }
 
     display->x11display = NULL;
     display->x11display = XOpenDisplay("unix:/tmp/.X11-unix/X0");
@@ -1979,8 +1663,6 @@ create_display(const char *gralloc)
         ALOGE("Couldn't connect to X11 display.");
 	return NULL;
     }
-    /*display->xcbconnection = xcb_connect_to_display_with_auth_info("unix:/tmp/.X11-unix/X0", NULL, NULL);
-     */
 	display->xcbconnection = XGetXCBConnection(display->x11display);
     if (xcb_connection_has_error(display->xcbconnection)) {
         ALOGE("Couldn't connect to X11 display.");
@@ -2013,11 +1695,6 @@ create_display(const char *gralloc)
     umask(0);
     mkdir("/dev/input", S_IRWXO | S_IRWXG | S_IRWXU);
     chown("/dev/input", 1000, 1000);
-    // display->registry = wl_display_get_registry(display->display);
-    // wl_registry_add_listener(display->registry,
-    //              &registry_listener, display);
-    // wl_display_roundtrip(display->display);
-
     display->task = IWaydroidTask::getService();
     display->isTouchDown = false;
     display->lastAxisEventNanoSeconds = 0;
@@ -2030,23 +1707,23 @@ create_display(const char *gralloc)
 
     display->width = display->full_width /display->scale;
     display->height = display->full_height /display->scale;
-     struct display *d = (struct display*)display;
-      d->input_fd[INPUT_POINTER] = -1;
-        d->ptrPrvX = 0;
-        d->ptrPrvY = 0;
-        d->isTouchDown = false;
-        d->reverseScroll = property_get_bool("persist.waydroid.reverse_scrolling", false);
-        mkfifo(INPUT_PIPE_NAME[INPUT_POINTER], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_POINTER], 1000, 1000);
-        // for emulate touch input event
-        d->input_fd[INPUT_TOUCH] = -1;
-        mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
+    struct display *d = (struct display*)display;
+    d->input_fd[INPUT_POINTER] = -1;
+    d->ptrPrvX = 0;
+    d->ptrPrvY = 0;
+    d->isTouchDown = false;
+    d->reverseScroll = property_get_bool("persist.waydroid.reverse_scrolling", false);
+    mkfifo(INPUT_PIPE_NAME[INPUT_POINTER], S_IRWXO | S_IRWXG | S_IRWXU);
+    chown(INPUT_PIPE_NAME[INPUT_POINTER], 1000, 1000);
+    // for emulate touch input event
+    d->input_fd[INPUT_TOUCH] = -1;
+    mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
+    chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
 
-        d->input_fd[INPUT_KEYBOARD] = -1;
-        mkfifo(INPUT_PIPE_NAME[INPUT_KEYBOARD], S_IRWXO | S_IRWXG | S_IRWXU);
-        chown(INPUT_PIPE_NAME[INPUT_KEYBOARD], 1000, 1000);
-     register_key_press_callback(on_key_press);
+    d->input_fd[INPUT_KEYBOARD] = -1;
+    mkfifo(INPUT_PIPE_NAME[INPUT_KEYBOARD], S_IRWXO | S_IRWXG | S_IRWXU);
+    chown(INPUT_PIPE_NAME[INPUT_KEYBOARD], 1000, 1000);
+    register_key_press_callback(on_key_press);
     register_key_release_callback(on_key_release);
     register_button_press_callback(on_button_press);
     register_button_release_callback(on_button_release);
@@ -2074,39 +1751,40 @@ create_display(const char *gralloc)
 void
 destroy_display(struct display *display)
 {
-    // if (display->wm_base)
-    //     xdg_wm_base_destroy(display->wm_base);
 
-    // if (display->shell)
-    //     wl_shell_destroy(display->shell);
+    if (display->ic) {
+        display->ic = 0;
+    }
+    if (display->im) {
+        xcb_xim_close(display->im);
+        xcb_xim_destroy(display->im);
+        display->im = NULL;
+    }
 
-    // if (display->compositor)
-    //     wl_compositor_destroy(display->compositor);
+    if (display->xcbscreen) {
+        display->xcbscreen = NULL;
+    }
 
-    // if (display->tablet_manager) {
-    //     for (struct zwp_tablet_tool_v2 *t : display->tablet_tools) {
-    //         zwp_tablet_tool_v2_destroy(t);
-    //     }
-    //     zwp_tablet_seat_v2_destroy(display->tablet_seat);
-    //     zwp_tablet_manager_v2_destroy(display->tablet_manager);
-    // }
+    if (display->colormap) {
+        xcb_free_colormap(display->xcbconnection, display->colormap);
+        display->colormap = 0;
+    }
 
-    // if (display->relative_pointer_manager)
-    //     zwp_relative_pointer_manager_v1_destroy(display->relative_pointer_manager);
+     if (display->xcbconnection) {
+        xcb_flush(display->xcbconnection);
+        xcb_disconnect(display->xcbconnection);
+        display->xcbconnection = NULL;
+    }
 
-    // if (display->pointer_constraints)
-    //     zwp_pointer_constraints_v1_destroy(display->pointer_constraints);
+    if (display->x11display) {
+        XCloseDisplay(display->x11display);
+        display->x11display = NULL;
+    }
 
-    // release_pointer_gestures_device(display);
-
-    // wl_registry_destroy(display->registry);
-    // wl_display_flush(display->display);
-    // wl_display_disconnect(display->display);
     delete display;
 }
 
 int remove_title(xcb_connection_t *conn, xcb_window_t main_win){
-          // 去掉窗口装饰（如标题栏）
     xcb_intern_atom_cookie_t hints_cookie = xcb_intern_atom(conn, 0, strlen("_MOTIF_WM_HINTS"), "_MOTIF_WM_HINTS");
     xcb_intern_atom_reply_t *hints_reply = xcb_intern_atom_reply(conn, hints_cookie, NULL);
     if (hints_reply) {
@@ -2131,21 +1809,21 @@ static int find_argb_visual(struct display *display) {
     XVisualInfo *vinfo = XGetVisualInfo(display->x11display, VisualScreenMask | VisualDepthMask | VisualClassMask, &vinfo_template, &n_vinfo);
 
     if (!vinfo) {
-        ALOGE("✗ 未找到32位深度的Visual");
+        ALOGE("visual with 32depth not found");
         return 0;
     }
 
     for (int i = 0; i < n_vinfo; i++) {
         XRenderPictFormat *format = XRenderFindVisualFormat(display->x11display, vinfo[i].visual);
         if (format && format->type == PictTypeDirect && format->direct.alphaMask) {
-            ALOGE("  ✓ 找到ARGB Visual: id=0x%lx\n", vinfo[i].visualid);
+            ALOGE("found ARGB Visual: id=0x%lx", vinfo[i].visualid);
             display->visualid  = vinfo[i].visualid;
             XFree(vinfo);
             return 1;
         }
     }
 
-    ALOGE("  ✗ 未找到带Alpha通道的Visual\n");
+    ALOGE("visual with alpha channel not found");
     XFree(vinfo);
     return 0;
 }

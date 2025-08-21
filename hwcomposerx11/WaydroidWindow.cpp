@@ -147,29 +147,13 @@ Return<void> WaydroidWindow::setIdleInhibit(const hidl_string& task, bool enable
     char property[PROPERTY_VALUE_MAX];
     std::string taskID = task;
 
-    if (!mDisplay->idle_manager && enabled)
+    if (enabled)
         return Void();
 
     property_get("waydroid.active_apps", property, "Openfde");
     if (!strcmp(property, "Openfde"))
         taskID = "0";
 
-    /*std::scoped_lock lock(mDisplay->windowsMutex);
-    for (auto it = mDisplay->windows.begin(); it != mDisplay->windows.end(); it++) {
-        struct window* window = it->second;
-        if (window && window->isActive && (window->taskID == taskID || taskID == "*")) {
-            ALOGI("%sinhibiting sleep from %s#%s", enabled ? "" : "not ", window->appID.c_str(), window->taskID.c_str());
-            if (enabled && window->idle_inhibitor == nullptr) {
-                window->idle_inhibitor = zwp_idle_inhibit_manager_v1_create_inhibitor(
-                        mDisplay->idle_manager,
-                        window->surface);
-            } else if (!enabled && window->idle_inhibitor != nullptr) {
-                zwp_idle_inhibitor_v1_destroy(window->idle_inhibitor);
-                window->idle_inhibitor = nullptr;
-            }
-        }
-    }
-    */
     return Void();
 }
 

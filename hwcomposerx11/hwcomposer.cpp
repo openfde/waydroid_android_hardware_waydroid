@@ -568,80 +568,52 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
         buf->width=drm_handle->width;
         buf->height=drm_handle->height;
-        if (1) {
-            getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (!buf->xpicture) {
-                delete buf;
-                return NULL;
-            }
-        } else {
-            ret = create_shm_wl_buffer(pdev->display, buf, drm_handle->width, drm_handle->height, drm_handle->format, pixel_stride, layer->handle);
-            update_shm_buffer(pdev->display, buf);
+        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        if (!buf->xpicture) {
+            delete buf;
+            return NULL;
         }
     } else if (pdev->display->gtype == GRALLOC_RANCHU) {
-        struct cb_handle_t* cb_handle = (struct cb_handle_t*)layer->handle;
+        /*struct cb_handle_t* cb_handle = (struct cb_handle_t*)layer->handle;
         auto width = cb_handle->width;
         auto height = cb_handle->height;
         auto hal_format = cb_handle->format;
-        ret = create_shm_wl_buffer(pdev->display, buf, width, height, hal_format,
-                                  pixel_stride, layer->handle);
-        update_shm_buffer(pdev->display, buf);
+	*/
     } else if (pdev->display->gtype == GRALLOC_CROS) {
         const struct cros_gralloc_handle *cros_handle = (const struct cros_gralloc_handle *)layer->handle;
-        if (1) {
         buf->width=cros_handle->width;
         buf->height=cros_handle->height;
         getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (!buf->xpicture) {
-                delete buf;
-                return NULL;
-            }
-        } else {
-            ret = create_shm_wl_buffer(pdev->display, buf, cros_handle->width, cros_handle->height, cros_handle->droid_format, pixel_stride, layer->handle);
-            update_shm_buffer(pdev->display, buf);
+        if (!buf->xpicture) {
+            delete buf;
+            return NULL;
         }
     } else if (pdev->display->gtype == GRALLOC_X100) {
         const X100_native_handle_t *x100_handle = (const X100_native_handle_t *)layer->handle;
-       if (1) {
-            buf->width=x100_handle->iWidth;
-	        buf->height=x100_handle->iHeight;
-            getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (! buf->xpicture) {
-                delete buf;
-                return NULL;
-            }
-        } else {
-            ret = create_shm_wl_buffer(pdev->display, buf, x100_handle->iWidth, x100_handle->iHeight, x100_handle->iFormat, pixel_stride, layer->handle);
-            if (ret != 0 ) {
-                ALOGE("x100 create shm wl buffer failed");
-            }
-            update_shm_buffer(pdev->display, buf);
+        buf->width=x100_handle->iWidth;
+        buf->height=x100_handle->iHeight;
+        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        if (! buf->xpicture) {
+            delete buf;
+            return NULL;
         }
     } else if (pdev->display->gtype == GRALLOC_LEOPARD) {
         const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
 	    buf->width=gc_handle->width;
 	    buf->height=gc_handle->height;
-	if (1) {
-            getXRenderPicture(pdev, layer, window, buf,pixel_stride);
-            if (!buf->xpicture) {
-                delete buf;
-                return NULL;
-            }
-        } else {
-            ret = create_shm_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format, pixel_stride, layer->handle);
-            update_shm_buffer(pdev->display, buf);
+        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        if (!buf->xpicture) {
+            delete buf;
+            return NULL;
         }
     } else {
-        if (pdev->display->gtype == GRALLOC_ANDROID) {
-            ret = create_android_wl_buffer(pdev->display, buf, width, height, format, pixel_stride, layer->handle);
-        } else {
-            ret = create_shm_wl_buffer(pdev->display, buf, width, height, format, pixel_stride, layer->handle);
-            update_shm_buffer(pdev->display, buf);
-        }
+        ALOGE("unsupport gralloc type %d", pdev->display->gtype);
+        delete buf;
+        return NULL;
     }
 
     if (ret) {
-        ALOGE("failed to create a wayland buffer");
+        ALOGE("failed to create a x11 pixcture");
         return NULL;
     }
     pdev->display->buffer_map[layer->handle] = buf;
@@ -721,7 +693,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
         xcb_rectangle_t rect;
         rect = {static_cast<int16_t>(values.x), static_cast<int16_t>(values.y), static_cast<uint16_t>(dst_width),static_cast<uint16_t>(dst_height)};
         window->rects.push_back(rect);
-	window->crops.push_back(sourceCrop);
+        window->crops.push_back(sourceCrop);
     }
 
 
@@ -1105,8 +1077,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         for (auto it = pdev->windows.cbegin(); it != pdev->windows.cend();) {
             bool foundApp = false;
             for (size_t l = 0; l < contents->numHwLayers; l++) {
-		if (contents->hwLayers[l].compositionType != HWC_OVERLAY)
-			continue;
+                if (contents->hwLayers[l].compositionType != HWC_OVERLAY)
+                    continue;
                 std::string layer_name = pdev->display->layer_names[l];
                 if (layer_name.substr(0, 4) == "TID:") {
                     std::string layer_tid = layer_name.substr(4, layer_name.find('#') - 4);
@@ -1249,62 +1221,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             std::string LayerRawName;
             std::istringstream issLayer(layer_name);
             std::getline(issLayer, LayerRawName, '#');
-            // if (LayerRawName == "Sprite" && pdev->display->pointer_surface) {
-            //     if (pdev->display->cursor_surface) {
-            //         struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
-            //         if (!buf) {
-            //             ALOGE("Failed to get wayland buffer");
-            //             if (fb_layer->acquireFenceFd != -1) {
-            //                 close(fb_layer->acquireFenceFd);
-            //             }
-            //             continue;
-            //         }
-
-            //         wl_surface_attach(pdev->display->cursor_surface, buf->buffer, 0, 0);
-            //         if (wl_surface_get_version(pdev->display->cursor_surface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-            //             wl_surface_damage_buffer(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-            //         else
-            //             wl_surface_damage(pdev->display->cursor_surface, 0, 0, buf->width, buf->height);
-            //         if (!pdev->display->viewporter && pdev->display->scale > 1) {
-            //             // With no viewporter the scale is guaranteed to be integer
-            //             wl_surface_set_buffer_scale(pdev->display->cursor_surface, (int)pdev->display->scale);
-            //         } else if (pdev->display->viewporter && pdev->display->scale != 1) {
-            //             setup_viewport_destination(pdev->display->cursor_viewport, fb_layer->displayFrame, pdev->display);
-            //         }
-
-            //         wl_surface_commit(pdev->display->cursor_surface);
-
-            //         if (fb_layer->acquireFenceFd != -1) {
-            //             close(fb_layer->acquireFenceFd);
-            //         }
-            //         continue;
-            //     } else {
-            //         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
-            //             if (it->second) {
-            //                 if (it->second->surface == pdev->display->pointer_surface) {
-            //                     window = it->second;
-            //                     break;
-            //                 }
-            //                 for (auto itt = it->second->surfaces.begin(); itt != it->second->surfaces.end(); itt++) {
-            //                     if (itt->second == pdev->display->pointer_surface) {
-            //                         window = it->second;
-            //                         break;
-            //                     }
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
-            /*if (LayerRawName == "InputMethod") {
-                if (pdev->windows.find(LayerRawName) == pdev->windows.end()) {
-                    pdev->windows[LayerRawName] = create_window(pdev->display, pdev->use_subsurface, LayerRawName, "none", {0, 0, 0, 0});
-                    std::string windows_size_str = std::to_string(pdev->windows.size());
-                    property_set("waydroid.open_windows", windows_size_str.c_str());
-                }
-                if (pdev->windows.find(LayerRawName) != pdev->windows.end())
-                    window = pdev->windows[LayerRawName];
-            }
-	    */
 	        if (pdev->multi_windows && ((LayerRawName == "Toast")
 	            || (LayerRawName.find("Application Not Responding:") !=  std::string::npos))) {
                 if (pdev->windows.find(LayerRawName) == pdev->windows.end()) {
