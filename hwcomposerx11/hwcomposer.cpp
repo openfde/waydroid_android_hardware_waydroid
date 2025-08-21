@@ -74,7 +74,6 @@ using ::android::status_t;
 struct waydroid_hwc_composer_device_1 {
     hwc_composer_device_1_t base; // constant after init
     const hwc_procs_t *procs;     // constant after init
-    pthread_t wayland_thread;     // constant after init
     pthread_t vsync_thread;       // constant after init
     pthread_t extension_thread;   // constant after init
     pthread_t window_service_thread; // constant after init
@@ -575,13 +574,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
     return pdev->display->buffer_map[layer->handle];
 }
 
-/*static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display)
-{
-    wp_viewport_set_destination(viewport,
-            fmax(1, ceil((frame.right - frame.left) / display->scale)),
-            fmax(1, ceil((frame.bottom - frame.top) / display->scale)));
-}
-*/
+
 static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_layer_1_t * layer, struct buffer *buf, struct window *window, bool use_subsurface){
     if (!use_subsurface)
         return  0;
@@ -725,43 +718,6 @@ static void* hwc_vsync_thread(void* data) {
 
     return NULL;
 }
-
-// static void
-// feedback_sync_output(void *, struct wp_presentation_feedback *,
-//              struct wl_output *)
-// {
-// }
-
-// static void
-// feedback_presented(void *data,
-//            struct wp_presentation_feedback *feedback,
-//            uint32_t tv_sec_hi,
-//            uint32_t tv_sec_lo,
-//            uint32_t tv_nsec,
-//            uint32_t,
-//            uint32_t,
-//            uint32_t,
-//            uint32_t)
-// {
-//     struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
-//     wp_presentation_feedback_destroy(feedback);
-
-//     pthread_mutex_lock(&pdev->vsync_lock);
-//     pdev->last_vsync_ns = (((uint64_t)tv_sec_hi << 32) + tv_sec_lo) * 1e9 + tv_nsec;
-//     pthread_mutex_unlock(&pdev->vsync_lock);
-// }
-
-// static void
-// feedback_discarded(void *, struct wp_presentation_feedback *feedback)
-// {
-//     wp_presentation_feedback_destroy(feedback);
-// }
-
-// static const struct wp_presentation_feedback_listener feedback_listener = {
-//     feedback_sync_output,
-//     feedback_presented,
-//     feedback_discarded
-// };
 
 void get_input_shape(xcb_connection_t *conn, xcb_window_t window) {
     if (!xcb_get_extension_data(conn, &xcb_shape_id)->present) {
@@ -1140,11 +1096,11 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         // TODO: Implement per-layer explicit synchronization
         fb_layer->releaseFenceFd = -1;
 
-	XTransform transform;
+	    XTransform transform;
         switch (fb_layer->transform) {
-             case HWC_TRANSFORM_FLIP_H:
-		transform.matrix[0][0] = XDoubleToFixed(-1.0); // scale x by -1
-		transform.matrix[0][1] = XDoubleToFixed(0.0);
+            case HWC_TRANSFORM_FLIP_H:
+                transform.matrix[0][0] = XDoubleToFixed(-1.0); // scale x by -1
+                transform.matrix[0][1] = XDoubleToFixed(0.0);
                 transform.matrix[0][2] = XDoubleToFixed(buf->width);
                 transform.matrix[1][0] = XDoubleToFixed(0.0);
                 transform.matrix[1][1] = XDoubleToFixed(1.0);
@@ -1153,82 +1109,82 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 transform.matrix[2][1] = XDoubleToFixed(0.0);
                 transform.matrix[2][2] = XDoubleToFixed(1.0);
                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-		break;
-             case HWC_TRANSFORM_FLIP_V:
-                 transform.matrix[0][0] = XDoubleToFixed(1.0);
-                 transform.matrix[0][1] = XDoubleToFixed(0.0);
-                 transform.matrix[0][2] = XDoubleToFixed(0.0);
-                 transform.matrix[1][0] = XDoubleToFixed(0.0);
-                 transform.matrix[1][1] = XDoubleToFixed(-1.0); // scale y by -1
-                 transform.matrix[1][2] = XDoubleToFixed(buf->height);
-                 transform.matrix[2][0] = XDoubleToFixed(0.0);
-                 transform.matrix[2][1] = XDoubleToFixed(0.0);
-                 transform.matrix[2][2] = XDoubleToFixed(1.0);
-                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                 break;
-             case HWC_TRANSFORM_ROT_90:
-                 transform.matrix[0][0] = XDoubleToFixed(0.0);
-                 transform.matrix[0][1] = XDoubleToFixed(-1.0);
-                 transform.matrix[0][2] = XDoubleToFixed(buf->height);
-                 transform.matrix[1][0] = XDoubleToFixed(1.0);
-                 transform.matrix[1][1] = XDoubleToFixed(0.0);
-                 transform.matrix[1][2] = XDoubleToFixed(0.0);
-                 transform.matrix[2][0] = XDoubleToFixed(0.0);
-                 transform.matrix[2][1] = XDoubleToFixed(0.0);
-                 transform.matrix[2][2] = XDoubleToFixed(1.0);
-                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                 break;
-             case HWC_TRANSFORM_ROT_180:
-                 transform.matrix[0][0] = XDoubleToFixed(-1.0);
-                 transform.matrix[0][1] = XDoubleToFixed(0.0);
-                 transform.matrix[0][2] = XDoubleToFixed(buf->width);
-                 transform.matrix[1][0] = XDoubleToFixed(0.0);
-                 transform.matrix[1][1] = XDoubleToFixed(-1.0);
-                 transform.matrix[1][2] = XDoubleToFixed(buf->height);
-                 transform.matrix[2][0] = XDoubleToFixed(0.0);
-                 transform.matrix[2][1] = XDoubleToFixed(0.0);
-                 transform.matrix[2][2] = XDoubleToFixed(1.0);
-                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                 break;
-             case HWC_TRANSFORM_ROT_270:
-                 transform.matrix[0][0] = XDoubleToFixed(0.0);
-                 transform.matrix[0][1] = XDoubleToFixed(1.0);
-                 transform.matrix[0][2] = XDoubleToFixed(0.0);
-                 transform.matrix[1][0] = XDoubleToFixed(-1.0);
-                 transform.matrix[1][1] = XDoubleToFixed(0.0);
-                 transform.matrix[1][2] = XDoubleToFixed(buf->width);
-                 transform.matrix[2][0] = XDoubleToFixed(0.0);
-                 transform.matrix[2][1] = XDoubleToFixed(0.0);
-                 transform.matrix[2][2] = XDoubleToFixed(1.0);
-                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                 break;
-             case HWC_TRANSFORM_FLIP_H_ROT_90:
-                 transform.matrix[0][0] = XDoubleToFixed(0.0);
-                 transform.matrix[0][1] = XDoubleToFixed(1.0);
-                 transform.matrix[0][2] = XDoubleToFixed(0.0);
-                 transform.matrix[1][0] = XDoubleToFixed(1.0);
-                 transform.matrix[1][1] = XDoubleToFixed(0.0);
-                 transform.matrix[1][2] = XDoubleToFixed(0.0);
-                 transform.matrix[2][0] = XDoubleToFixed(0.0);
-                 transform.matrix[2][1] = XDoubleToFixed(0.0);
-                 transform.matrix[2][2] = XDoubleToFixed(1.0);
-                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                 break;
-             case HWC_TRANSFORM_FLIP_V_ROT_90:
-                 transform.matrix[0][0] = XDoubleToFixed(0.0);
-                 transform.matrix[0][1] = XDoubleToFixed(-1.0);
-                 transform.matrix[0][2] = XDoubleToFixed(buf->height);
-                 transform.matrix[1][0] = XDoubleToFixed(-1.0);
-                 transform.matrix[1][1] = XDoubleToFixed(0.0);
-                 transform.matrix[1][2] = XDoubleToFixed(buf->width);
-                 transform.matrix[2][0] = XDoubleToFixed(0.0);
-                 transform.matrix[2][1] = XDoubleToFixed(0.0);
-                 transform.matrix[2][2] = XDoubleToFixed(1.0);
-                 XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
-                 break;
-             default:
-                 break;
-	}
+		        break;
+            case HWC_TRANSFORM_FLIP_V:
+                transform.matrix[0][0] = XDoubleToFixed(1.0);
+                transform.matrix[0][1] = XDoubleToFixed(0.0);
+                transform.matrix[0][2] = XDoubleToFixed(0.0);
+                transform.matrix[1][0] = XDoubleToFixed(0.0);
+                transform.matrix[1][1] = XDoubleToFixed(-1.0); // scale y by -1
+                transform.matrix[1][2] = XDoubleToFixed(buf->height);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_ROT_90:
+                transform.matrix[0][0] = XDoubleToFixed(0.0);
+                transform.matrix[0][1] = XDoubleToFixed(-1.0);
+                transform.matrix[0][2] = XDoubleToFixed(buf->height);
+                transform.matrix[1][0] = XDoubleToFixed(1.0);
+                transform.matrix[1][1] = XDoubleToFixed(0.0);
+                transform.matrix[1][2] = XDoubleToFixed(0.0);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_ROT_180:
+                transform.matrix[0][0] = XDoubleToFixed(-1.0);
+                transform.matrix[0][1] = XDoubleToFixed(0.0);
+                transform.matrix[0][2] = XDoubleToFixed(buf->width);
+                transform.matrix[1][0] = XDoubleToFixed(0.0);
+                transform.matrix[1][1] = XDoubleToFixed(-1.0);
+                transform.matrix[1][2] = XDoubleToFixed(buf->height);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_ROT_270:
+                transform.matrix[0][0] = XDoubleToFixed(0.0);
+                transform.matrix[0][1] = XDoubleToFixed(1.0);
+                transform.matrix[0][2] = XDoubleToFixed(0.0);
+                transform.matrix[1][0] = XDoubleToFixed(-1.0);
+                transform.matrix[1][1] = XDoubleToFixed(0.0);
+                transform.matrix[1][2] = XDoubleToFixed(buf->width);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_FLIP_H_ROT_90:
+                transform.matrix[0][0] = XDoubleToFixed(0.0);
+                transform.matrix[0][1] = XDoubleToFixed(1.0);
+                transform.matrix[0][2] = XDoubleToFixed(0.0);
+                transform.matrix[1][0] = XDoubleToFixed(1.0);
+                transform.matrix[1][1] = XDoubleToFixed(0.0);
+                transform.matrix[1][2] = XDoubleToFixed(0.0);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            case HWC_TRANSFORM_FLIP_V_ROT_90:
+                transform.matrix[0][0] = XDoubleToFixed(0.0);
+                transform.matrix[0][1] = XDoubleToFixed(-1.0);
+                transform.matrix[0][2] = XDoubleToFixed(buf->height);
+                transform.matrix[1][0] = XDoubleToFixed(-1.0);
+                transform.matrix[1][1] = XDoubleToFixed(0.0);
+                transform.matrix[1][2] = XDoubleToFixed(buf->width);
+                transform.matrix[2][0] = XDoubleToFixed(0.0);
+                transform.matrix[2][1] = XDoubleToFixed(0.0);
+                transform.matrix[2][2] = XDoubleToFixed(1.0);
+                XRenderSetPictureTransform(pdev->display->x11display, buf->xpicture, &transform);
+                break;
+            default:
+                break;
+	    }
       
         if (pdev->use_subsurface ) {
         	adjust_window_geo(pdev, fb_layer, buf,window, pdev->use_subsurface);
@@ -1256,15 +1212,15 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 
     // Layers order is changed from SF so we rearrange wayland surfaces
      if (pdev->use_subsurface)
-         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
-             if (it->second){
-		if (it->second->rects.size() > 1)
-	    	{
-			set_black_background(pdev,it->second);
-		}
-	     	XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
-		   	 0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
-		if (!it->second->rects.empty()) {
+        for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++)
+            if (it->second){
+                if (it->second->rects.size() > 1)
+                {
+                    set_black_background(pdev,it->second);
+                }
+                XRenderComposite(pdev->display->x11display, PictOpSrc, it->second->backxpicture, None, it->second->xpicture,
+                    0, 0, 0, 0, 0,0, pdev->display->width, pdev->display->height);
+                if (!it->second->rects.empty()) {
                     xcb_shape_rectangles(pdev->display->xcbconnection,
                                         XCB_SHAPE_SO_SET,      // 设置操作
                                         XCB_SHAPE_SK_INPUT,    // 输入形状
@@ -1273,8 +1229,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                                         0, 0,
                                         it->second->rects.size(),
                                         it->second->rects.data());
-               		}
-	     	}
+                }
+	        }
     XFlush(pdev->display->x11display);
     if (pdev->display->geo_changed) {
         for (auto it = pdev->windows.begin(); it != pdev->windows.end(); it++) {
@@ -1430,27 +1386,10 @@ static int hwc_close(hw_device_t* dev) {
 
     destroy_display(pdev->display);
 
-    pthread_kill(pdev->wayland_thread, SIGTERM);
-    pthread_join(pdev->wayland_thread, NULL);
-
     delete dev;
     return 0;
 }
 
-/*static void* hwc_wayland_thread(void* data) {
-    struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
-    int ret = 0;
-
-    setpriority(PRIO_PROCESS, 0, HAL_PRIORITY_URGENT_DISPLAY);
-
-    while (ret != -1)
-        ret = wl_display_dispatch(pdev->display->display);
-
-    ALOGE("*** %s: Wayland client was disconnected: %s", __PRETTY_FUNCTION__, strerror(ret));
-
-    return NULL;
-}
-*/
 
 static void* hwc_extension_thread(void* data) {
     struct waydroid_hwc_composer_device_1* pdev = (struct waydroid_hwc_composer_device_1*)data;
@@ -1594,15 +1533,6 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     if (pdev->display->refresh > 1000 && pdev->display->refresh < 1000000)
         pdev->vsync_period_ns = 1000 * 1000 * 1000 / (pdev->display->refresh / 1000);
 
-    // if (true/*!property_get_bool("persist.waydroid.cursor_on_subsurface", false)*/) {
-    //     pdev->display->cursor_surface =
-    //         wl_compositor_create_surface(pdev->display->compositor);
-    //     if (pdev->display->viewporter) {
-    //         pdev->display->cursor_viewport =
-    //             wp_viewporter_get_viewport(pdev->display->viewporter, pdev->display->cursor_surface);
-    //     }
-    // }
-
     struct timespec rt;
     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
        ALOGE("%s:%d error in vsync thread clock_gettime: %s",
@@ -1617,11 +1547,6 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
             ALOGE("waydroid_hw_composer could not start vsync_thread\n");
         }
     }
-
-    // ret = pthread_create (&pdev->wayland_thread, NULL, hwc_wayland_thread, pdev);
-    // if (ret) {
-    //     ALOGE("waydroid_hw_composer could not start wayland_thread\n");
-    // }
 
     ret = pthread_create (&pdev->extension_thread, NULL, hwc_extension_thread, pdev);
     if (ret) {
@@ -1649,30 +1574,30 @@ static struct hw_module_methods_t hwc_module_methods = {
 };
 
 int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t main_win){
-      // 取消窗口最大化（移除 _NET_WM_STATE_MAXIMIZED_HORZ 和 _NET_WM_STATE_MAXIMIZED_VERT）
-            xcb_intern_atom_cookie_t state_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE"), "_NET_WM_STATE");
-            xcb_intern_atom_cookie_t max_horz_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE_MAXIMIZED_HORZ"), "_NET_WM_STATE_MAXIMIZED_HORZ");
-            xcb_intern_atom_cookie_t max_vert_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE_MAXIMIZED_VERT"), "_NET_WM_STATE_MAXIMIZED_VERT");
+    // 取消窗口最大化（移除 _NET_WM_STATE_MAXIMIZED_HORZ 和 _NET_WM_STATE_MAXIMIZED_VERT）
+    xcb_intern_atom_cookie_t state_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE"), "_NET_WM_STATE");
+    xcb_intern_atom_cookie_t max_horz_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE_MAXIMIZED_HORZ"), "_NET_WM_STATE_MAXIMIZED_HORZ");
+    xcb_intern_atom_cookie_t max_vert_cookie = xcb_intern_atom(conn, 0, strlen("_NET_WM_STATE_MAXIMIZED_VERT"), "_NET_WM_STATE_MAXIMIZED_VERT");
 
-            xcb_intern_atom_reply_t *state_atom = xcb_intern_atom_reply(conn, state_cookie, NULL);
-            xcb_intern_atom_reply_t *max_horz_atom = xcb_intern_atom_reply(conn, max_horz_cookie, NULL);
-            xcb_intern_atom_reply_t *max_vert_atom = xcb_intern_atom_reply(conn, max_vert_cookie, NULL);
+    xcb_intern_atom_reply_t *state_atom = xcb_intern_atom_reply(conn, state_cookie, NULL);
+    xcb_intern_atom_reply_t *max_horz_atom = xcb_intern_atom_reply(conn, max_horz_cookie, NULL);
+    xcb_intern_atom_reply_t *max_vert_atom = xcb_intern_atom_reply(conn, max_vert_cookie, NULL);
 
-            if (state_atom && max_horz_atom && max_vert_atom) {
-                xcb_client_message_event_t ev ;
-                ev.response_type = XCB_CLIENT_MESSAGE;
-                ev.format = 32;
-                ev.window = main_win;
-                ev.type = state_atom->atom;
-                ev.data.data32[0] = 0; // _NET_WM_STATE_REMOVE
-                ev.data.data32[1] = max_horz_atom->atom;
-                ev.data.data32[2] = max_vert_atom->atom;
-                ev.data.data32[3] = 1;
-                ev.data.data32[4] = 0;
-                xcb_send_event(conn, 0, screen->root,
-                    XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
-                    (const char *)&ev);
-            }
+    if (state_atom && max_horz_atom && max_vert_atom) {
+        xcb_client_message_event_t ev ;
+        ev.response_type = XCB_CLIENT_MESSAGE;
+        ev.format = 32;
+        ev.window = main_win;
+        ev.type = state_atom->atom;
+        ev.data.data32[0] = 0; // _NET_WM_STATE_REMOVE
+        ev.data.data32[1] = max_horz_atom->atom;
+        ev.data.data32[2] = max_vert_atom->atom;
+        ev.data.data32[3] = 1;
+        ev.data.data32[4] = 0;
+        xcb_send_event(conn, 0, screen->root,
+            XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+            (const char *)&ev);
+    }
     return 0;
 }
 
