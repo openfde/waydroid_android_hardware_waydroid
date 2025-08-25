@@ -630,7 +630,7 @@ static void handle_pinch_update(void *data, uint32_t time, wl_fixed_t dx, wl_fix
     ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
 
-    ALOGE("on_button_release write INPUT_TOUCH");
+    ALOGI("on_button_release write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
 
     if (res < sizeof(event))
@@ -817,9 +817,6 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
         if (ensure_pipe(display, INPUT_POINTER))
             return;
 
-        //if (!display->pointer_surface)
-        //    return;
-
         if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
             ALOGE("%s:%d error in touch clock_gettime: %s",
                    __FILE__, __LINE__, strerror(errno));
@@ -848,12 +845,8 @@ void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
 }
 
 void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event) {
-    ALOGE("on_button_release: button=%u, position=(%d, %d)\n",
-               xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     struct display* display = (struct display*)data;
-    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
     if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
-        ALOGE("on_button_release %d", xcb_button_event->detail);
         uint32_t axis = 0;
         int value = (xcb_button_event->detail == XCB_BUTTON_INDEX_4) ? -2560 : 2560;
         display->wheelEvtIsDiscrete = true;
@@ -886,7 +879,6 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
         }
         if(xcb_button_event->detail == 1){
             display->isMouseLeftDown = false;
-            ALOGE("on_button_release isMouseLeftDown set false");
         }
 
         uint32_t button = 0;
@@ -901,7 +893,6 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
         if(button != 0){
             ADD_EVENT(EV_KEY, button, 0);
             ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-            ALOGE("on_button_release write INPUT_POINTER");
             res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         }
     }
@@ -909,10 +900,10 @@ void on_button_release(void *data, xcb_button_release_event_t *xcb_button_event)
 
 void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
     struct display* display = (struct display*)data;
-    //ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
-    //ALOGE("x11 mouse move: position=(%d, %d)\n",
+    //ALOGI("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+    //ALOGI("x11 mouse move: position=(%d, %d)\n",
      //      event->event_x, event->event_y);
-    //ALOGE("鼠标移动: 窗口坐标 (%d, %d) -> 屏幕坐标 (%d, %d)\n", event->event_x, event->event_y, event->root_x, event->root_y);
+    //ALOGI("鼠标移动: 窗口坐标 (%d, %d) -> 屏幕坐标 (%d, %d)\n", event->event_x, event->event_y, event->root_x, event->root_y);
     if(display->axis_simulation_two_finger_started){
         pointer_cancel_axis_to_two_finger_touch(display);
     }
@@ -922,22 +913,13 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
         return;
     }
 
-    //if (!display->pointer_surface){
-    //    ALOGE("on_motion_notify return 2------>>>>>>");
-    //    return;
-    //}
-
     x = event->root_x;
     y = event->root_y;
-    //x = event->event_x;
-    //y = event->event_y;
 
     if (display->scale != 1) {
         x = int(x * display->scale);
         y = int(y * display->scale);
     }
-    //x += display->layers[display->pointer_surface].x;
-    //y += display->layers[display->pointer_surface].y;
 
     if (display->isTouchDown) {
         display->ptrPrvX = x;
@@ -965,7 +947,7 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
             return;
         }
 
-        ALOGE("on_motion_notify write INPUT_POINTER");
+        ALOGI("on_motion_notify write INPUT_POINTER");
         res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
         if (res < sizeof(event))
             ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -1026,14 +1008,12 @@ void *event_loop_thread(void *arg) {
                 // Forward event to input method if IC is created.
                 if (display->ic && (((event->response_type & ~0x80) == XCB_KEY_PRESS) ||
                            ((event->response_type & ~0x80) == XCB_KEY_RELEASE))) {
-                    ALOGE("ic: %d", display->ic);
                     xcb_xim_forward_event(display->im, display->ic, (xcb_key_press_event_t *)event);
-                    ALOGE("xcb_xim_forward_event called. ");
                     free(event);
                     continue;
                 }
             }else{
-                ALOGE("event has been consumed by input method. ");
+                ALOGI("event has been consumed by input method. ");
                 free(event);
                 continue;
             }
@@ -1064,7 +1044,6 @@ void *event_loop_thread(void *arg) {
             }
             case XCB_FOCUS_OUT:{
                 enable_auto_repeat(display->x11display);
-                ALOGE("Focus lost, releasing all keys");
                 for (size_t i = 0; i < display->keysDown.size(); i++) {
                     if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
                         send_key_event(display, i, WL_KEYBOARD_KEY_STATE_RELEASED);
@@ -1103,7 +1082,6 @@ void *event_loop_thread(void *arg) {
                     if (dispatcher.button_press_cb) {
                         dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
                     }
-                    ALOGE("im: %p", display->im);
                     xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
                     if(display->im){
                         xcb_point_t spot = {xcb_button_event->root_x, xcb_button_event->root_y};
@@ -1563,7 +1541,6 @@ create_display(const char *gralloc)
     d->input_fd[INPUT_POINTER] = -1;
     d->ptrPrvX = 0;
     d->ptrPrvY = 0;
-    d->isTouchDown = false;
     d->reverseScroll = property_get_bool("persist.waydroid.reverse_scrolling", false);
     mkfifo(INPUT_PIPE_NAME[INPUT_POINTER], S_IRWXO | S_IRWXG | S_IRWXU);
     chown(INPUT_PIPE_NAME[INPUT_POINTER], 1000, 1000);
