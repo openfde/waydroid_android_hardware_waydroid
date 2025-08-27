@@ -95,7 +95,6 @@ struct waydroid_hwc_composer_device_1 {
 
 int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t main_win);
 static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
-//static void setup_viewport_destination(wp_viewport *viewport, hwc_rect_t frame, struct display *display);
 
 static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
     auto it = pdev->display->buffer_map.find(handle);
@@ -104,6 +103,7 @@ static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buff
         pdev->display->buffer_map.erase(it);
     }
 }
+
 
 static void x11_set_custom_cursor(waydroid_hwc_composer_device_1* pdev, Picture xpicture, int hot_x, int hot_y) {
     ALOGD("x11_set_custom_cursor hot_x: %d, hot_y: %d", hot_x, hot_y);
@@ -132,10 +132,6 @@ static void x11_set_custom_cursor(waydroid_hwc_composer_device_1* pdev, Picture 
 }
 
 static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_layer_1_t* fb_layer, size_t layer) {
-    // if (!pdev->display->cursor_surface) {
-    //     return false;
-    // }
-
     std::string layer_name = pdev->display->layer_names[layer];
 
     if (layer_name.substr(0, 6) != "Sprite" || fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET) {
@@ -326,6 +322,48 @@ static void update_shm_buffer(struct display* display, struct buffer *buffer)
     }
 }
 
+static int update_shm_pixmap(struct display * display, struct buffer *buffer, struct window *window) {
+	update_shm_buffer(display,buffer);
+	int width = buffer->width;
+	int height = buffer->height;
+        buffer->xcbpixmap = xcb_generate_id(display->xcbconnection);
+	if (window != NULL){
+		xcb_void_cookie_t create_pixmap_cookie = xcb_create_pixmap(
+		    display->xcbconnection, 32, buffer->xcbpixmap, window->xcbwindow, width, height);
+
+		xcb_generic_error_t *pixmap_error = xcb_request_check(display->xcbconnection, create_pixmap_cookie);
+		if (pixmap_error) {
+		    ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
+		    free(pixmap_error);
+		    return -1;
+		}
+		xcb_put_image(display->xcbconnection, XCB_IMAGE_FORMAT_Z_PIXMAP,
+		    buffer->xcbpixmap, window->xcbgc, width, height, 0, 0, 0, 32,
+		    width * height * 4, (uint8_t*)buffer->shm_data);
+	}else{
+		xcb_void_cookie_t create_pixmap_cookie = xcb_create_pixmap(
+		    display->xcbconnection, 32, buffer->xcbpixmap, display->xcbscreen->root, width, height);
+		xcb_generic_error_t *pixmap_error = xcb_request_check(display->xcbconnection, create_pixmap_cookie);
+		if (pixmap_error) {
+		    ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
+		    free(pixmap_error);
+		    return -1;
+		}
+		xcb_gcontext_t gc = xcb_generate_id(display->xcbconnection);
+		xcb_create_gc(display->xcbconnection, gc, buffer->xcbpixmap, 0, NULL);
+		xcb_put_image(display->xcbconnection, XCB_IMAGE_FORMAT_Z_PIXMAP,
+		    buffer->xcbpixmap, gc, width, height, 0, 0, 0, 32,
+		    width * height * 4, (uint8_t*)buffer->shm_data);
+		xcb_free_gc(display->xcbconnection, gc);
+	}
+        XRenderPictureAttributes pa;
+        pa.repeat = False;
+        buffer->xpicture = XRenderCreatePicture(display->x11display, buffer->xcbpixmap,
+            display->argb_format, CPRepeat, &pa);
+	return 0;
+}
+
+
 static void * produce_BGRA_8888(struct waydroid_hwc_composer_device_1 *pdev, sp<android::GraphicBuffer> src_gb, sp<android::GraphicBuffer> dst_gb) {
     pdev->display->egl_work_queue.push_back(std::bind(egl_convert_buffer_to_BGRA_8888, pdev->display, src_gb,dst_gb));
 	sem_post(&pdev->display->egl_go);
@@ -502,7 +540,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 destroy_buffer(pdev->display, it->second);
                 pdev->display->buffer_map.erase(it);
             } else {
-                update_shm_buffer(pdev->display, it->second);
+                update_shm_pixmap(pdev->display, it->second,window);
                 return it->second;
             }
         } else {
@@ -521,17 +559,25 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
         buf->width=drm_handle->width;
         buf->height=drm_handle->height;
+	buf->pixel_stride = pixel_stride;
         getXRenderPicture(pdev, layer, window, buf,pixel_stride);
         if (!buf->xpicture) {
             delete buf;
             return NULL;
         }
     } else if (pdev->display->gtype == GRALLOC_RANCHU) {
-        /*struct cb_handle_t* cb_handle = (struct cb_handle_t*)layer->handle;
+        struct cb_handle_t* cb_handle = (struct cb_handle_t*)layer->handle;
         auto width = cb_handle->width;
         auto height = cb_handle->height;
         auto hal_format = cb_handle->format;
-	*/
+	//actually, it's running too slow by using shm to transfer graphic from graphic memory to x11 server
+	//after experiment we decide still use wayland to commit graphic for ranchu, and the code will keep here
+	create_shm_buffer(buf, width, height, hal_format,pixel_stride,layer->handle);
+	update_shm_pixmap(pdev->display, buf,window);
+        if (!buf->xpicture) {
+            delete buf;
+            return NULL;
+        }
     } else if (pdev->display->gtype == GRALLOC_CROS) {
         const struct cros_gralloc_handle *cros_handle = (const struct cros_gralloc_handle *)layer->handle;
         buf->width=cros_handle->width;
@@ -570,7 +616,6 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         return NULL;
     }
     pdev->display->buffer_map[layer->handle] = buf;
-
     return pdev->display->buffer_map[layer->handle];
 }
 
@@ -645,8 +690,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 
 
 
-    if (0)
-	ALOGE("src x %d y%d dst width %d dst height %d values.x %d, values.y %d app %s lastLayer %d  display right%d", src_x,src_y, dst_width, dst_height,
+    ALOGI("src x %d y%d dst width %d dst height %d values.x %d, values.y %d app %s lastLayer %d  display right%d", src_x,src_y, dst_width, dst_height,
 			values.x,values.y,window->appID.c_str(), window->lastLayer, layer->displayFrame.right);
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                   src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
@@ -734,7 +778,7 @@ void get_input_shape(xcb_connection_t *conn, xcb_window_t window) {
 
     int num_rects = xcb_shape_get_rectangles_rectangles_length(reply);
     xcb_rectangle_t *rects = xcb_shape_get_rectangles_rectangles(reply);
-    ALOGE("hwc_set Current input shape (%d rectangles):\n", num_rects);
+    ALOGI("hwc_set Current input shape (%d rectangles):\n", num_rects);
     for (int i = 0; i < num_rects; i++) {
         ALOGE("  hwc_set rectangle %d: x=%d, y=%d, width=%u, height=%u\n",
                i, rects[i].x, rects[i].y, rects[i].width, rects[i].height);

@@ -92,6 +92,13 @@ destroy_buffer(struct display * display ,struct buffer* buf) {
         XRenderFreePicture(display->x11display, buf->xpicture);
         buf->xpicture = 0;
     }
+    if (buf->isShm)
+        munmap(buf->shm_data, buf->size);
+    /*if (buf->shm_data) {
+	    free(buf->shm_data);
+	    buf->shm_data = 0;
+    }
+    */
     delete buf;
 }
 
@@ -325,7 +332,7 @@ static void pointer_handle_button_to_touch_down(struct display *display) {
     ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
     display->isTouchDown = true;
-    ALOGE("pointer_handle_button_to_touch_down write INPUT_TOUCH");
+    ALOGI("pointer_handle_button_to_touch_down write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
 
     if (res < sizeof(event))
@@ -349,7 +356,7 @@ static void pointer_handle_button_to_touch_up(struct display *display) {
     ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
     display->isTouchDown = false;
-    ALOGE("pointer_handle_button_to_touch_up write INPUT_TOUCH");
+    ALOGI("pointer_handle_button_to_touch_up write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
 
     if (res < sizeof(event))
@@ -410,7 +417,7 @@ pointer_cancel_axis_to_two_finger_touch(struct display *display){
     ADD_EVENT(EV_ABS, ABS_MT_SLOT, 1);
     ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-    ALOGE("pointer_cancel_axis_to_two_finger_touch write INPUT_TOUCH");
+    ALOGI("pointer_cancel_axis_to_two_finger_touch write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -465,7 +472,7 @@ pointer_cancel_axis_to_touch(struct display *display, bool fromAxisStopEvent, bo
         ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
     }
-    ALOGE("pointer_cancel_axis_to_touch write INPUT_TOUCH");
+    ALOGI("pointer_cancel_axis_to_touch write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, eventSize);
     if (res < sizeof(event)) {
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -474,68 +481,6 @@ pointer_cancel_axis_to_touch(struct display *display, bool fromAxisStopEvent, bo
 
     return true;
 }
-
-
-/*
-static void
-pointer_handle_motion(void *data, struct wl_pointer *,
-                      uint32_t, wl_fixed_t sx, wl_fixed_t sy)
-{
-    if(property_get_bool("fde.x11_input", false)){
-        return;
-    }
-    struct display* display = (struct display*)data;
-    if(display->axis_simulation_two_finger_started){
-        pointer_cancel_axis_to_two_finger_touch(display);
-    }
-    int x, y;
-
-    if (ensure_pipe(display, INPUT_POINTER))
-        return;
-
-    if (!display->pointer_surface)
-        return;
-    x = wl_fixed_to_int(sx);
-    y = wl_fixed_to_int(sy);
-    if (display->scale != 1) {
-        x = int(x * display->scale);
-        y = int(y * display->scale);
-    }
-    x += display->layers[display->pointer_surface].x;
-    y += display->layers[display->pointer_surface].y;
-
-    if (display->isTouchDown) {
-        display->ptrPrvX = x;
-        display->ptrPrvY = y;
-        pointer_handle_button_to_touch_down(display);
-    } else if (pointer_cancel_axis_to_touch(display, false, false)) {
-        struct input_event event[5];
-        struct timespec rt;
-        unsigned int res, n = 0;
-
-        if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
-            ALOGE("%s:%d error in touch clock_gettime: %s",
-                __FILE__, __LINE__, strerror(errno));
-        }
-
-        ADD_EVENT(EV_ABS, ABS_X, x);
-        ADD_EVENT(EV_ABS, ABS_Y, y);
-        ADD_EVENT(EV_REL, REL_X, x - display->ptrPrvX);
-        ADD_EVENT(EV_REL, REL_Y, y - display->ptrPrvY);
-        ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-        display->ptrPrvX = x;
-        display->ptrPrvY = y;
-        if(property_get_bool("fde.inject_as_touch", false)){
-            return;
-        }
-
-        res = write(display->input_fd[INPUT_POINTER], &event, sizeof(event));
-        if (res < sizeof(event))
-            ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
-    }
-}
-
-*/
 
 
 typedef void (*KeyPressCallback)(void *data, xcb_key_press_event_t *event);
@@ -561,7 +506,7 @@ void register_button_release_callback(ButtonReleaseCallback cb) { dispatcher.but
 void register_motion_notify_callback(MotionNotifyCallback cb) { dispatcher.motion_notify_cb = cb; }
 
 void on_key_press(void *data, xcb_key_press_event_t *event) {
-    ALOGE("x11 keyboard press: keycode=%u\n", event->detail);
+    ALOGI("x11 keyboard press: keycode=%u\n", event->detail);
     uint32_t key = event->detail - 8;
     if (event->detail == KEY_POWER)
         return;
@@ -573,7 +518,7 @@ void on_key_press(void *data, xcb_key_press_event_t *event) {
 }
 
 void on_key_release(void *data, xcb_key_release_event_t *event) {
-    ALOGE("x11 keyboard release: keycode=%u\n", event->detail);
+    ALOGI("x11 keyboard release: keycode=%u\n", event->detail);
     uint32_t key = event->detail - 8;
     if (key == KEY_POWER)
         return;
@@ -702,7 +647,7 @@ pointer_axis_to_touch(struct display *display, int move, bool verticalScroll)
     }
     ADD_EVENT(EV_ABS, ABS_MT_PRESSURE, 50);
     ADD_EVENT(EV_SYN, SYN_REPORT, 0);
-    ALOGE("pointer_axis_to_touch write INPUT_TOUCH");
+    ALOGI("pointer_axis_to_touch write INPUT_TOUCH");
     res = write(display->input_fd[INPUT_TOUCH], &event, sizeof(event));
     if (res < sizeof(event))
         ALOGE("Failed to write event for InputFlinger: %s", strerror(errno));
@@ -786,14 +731,14 @@ x11_pointer_handle_axis(void *data,  uint32_t axis, int value)
 
 
 void on_button_press(void *data, xcb_button_press_event_t *xcb_button_event) {
-    ALOGE("on_button_press: botton=%u, position=(%d, %d)\n",
+    ALOGI("on_button_press: botton=%u, position=(%d, %d)\n",
            xcb_button_event->detail, xcb_button_event->event_x, xcb_button_event->event_y);
     if(xcb_button_event->detail == XCB_BUTTON_INDEX_4 || xcb_button_event->detail == XCB_BUTTON_INDEX_5){
         ALOGE("on_button_press %d return", xcb_button_event->detail);
         return;
     }
     struct display* display = (struct display*)data;
-    ALOGE("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
+    ALOGI("display->ptrPrvX: %d, display->ptrPrvY: %d", display->ptrPrvX, display->ptrPrvY);
 
     pointer_cancel_axis_to_touch(display, false, true);
     if(display->axis_simulation_two_finger_started){
@@ -1064,7 +1009,7 @@ void *event_loop_thread(void *arg) {
                         if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
                             if (display->task != nullptr) {
                                 if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
-                                    ALOGE("remove task %s", it->first.c_str());
+                                    ALOGI("remove task %s", it->first.c_str());
                                     if(isValidInteger(it->first)){
                                         display->task->removeTask(stoi(it->first));
                                     }
@@ -1085,7 +1030,7 @@ void *event_loop_thread(void *arg) {
                     xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
                     if(display->im){
                         xcb_point_t spot = {xcb_button_event->root_x, xcb_button_event->root_y};
-                        ALOGE("on button press update_spot_location x: %d, y: %d", spot.x, spot.y);
+                        ALOGI("on button press update_spot_location x: %d, y: %d", spot.x, spot.y);
                         update_spot_location(display->im, display->ic, spot);
                     }
                     break;
@@ -1656,3 +1601,32 @@ static int find_argb_visual(struct display *display) {
     XFree(vinfo);
     return 0;
 }
+
+int
+create_shm_buffer(struct buffer *buffer, int width, int height, int format, int pixel_stride, buffer_handle_t target)
+{
+    // Assume 4bpp formats or none of this is going to work
+    int shm_stride = width * 4;
+    int size = shm_stride * height;
+
+    buffer->size = size;
+    buffer->hal_format = format;
+    buffer->format = format;
+    assert(buffer->format >= 0);
+    buffer->width = width;
+    buffer->height = height;
+    buffer->pixel_stride = pixel_stride;
+    buffer->handle = target;
+    buffer->isShm = true;
+    int fd = syscall(__NR_memfd_create, "buffer", MFD_ALLOW_SEALING);
+    ftruncate(fd, size);
+    buffer->shm_data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (buffer->shm_data == MAP_FAILED) {
+        ALOGE("mmap failed");
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 0;
+}
+
