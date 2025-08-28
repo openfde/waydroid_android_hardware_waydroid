@@ -323,7 +323,7 @@ cc_library_shared {
     srcs: [
         "extension.cpp",
         "hwcomposer.cpp",
-        "wayland-hwc.cpp",
+        "x11-hwc.cpp",
         "WaydroidWindow.cpp",
         "egl-tools.cpp",
     ],

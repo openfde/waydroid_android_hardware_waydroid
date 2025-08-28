@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-#include "wayland-hwc.h"
+#include "x11-hwc.h"
 #include "egl-tools.h"
 
 #include <stdint.h>

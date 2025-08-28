@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "wayland-hwc.h"
+#include "x11-hwc.h"
 #include <ui/GraphicBuffer.h>
 
 void* egl_loop(void* data);
