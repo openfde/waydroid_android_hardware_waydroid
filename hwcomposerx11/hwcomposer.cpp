@@ -323,32 +323,14 @@ static void update_shm_buffer(struct display* display, struct buffer *buffer)
 }
 
 static int update_shm_pixmap(struct display * display, struct buffer *buffer, struct window *window) {
-	update_shm_buffer(display,buffer);
 	int width = buffer->width;
 	int height = buffer->height;
-        buffer->xcbpixmap = xcb_generate_id(display->xcbconnection);
+	update_shm_buffer(display,buffer);
 	if (window != NULL){
-		xcb_void_cookie_t create_pixmap_cookie = xcb_create_pixmap(
-		    display->xcbconnection, 32, buffer->xcbpixmap, window->xcbwindow, width, height);
-
-		xcb_generic_error_t *pixmap_error = xcb_request_check(display->xcbconnection, create_pixmap_cookie);
-		if (pixmap_error) {
-		    ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
-		    free(pixmap_error);
-		    return -1;
-		}
 		xcb_put_image(display->xcbconnection, XCB_IMAGE_FORMAT_Z_PIXMAP,
 		    buffer->xcbpixmap, window->xcbgc, width, height, 0, 0, 0, 32,
 		    width * height * 4, (uint8_t*)buffer->shm_data);
 	}else{
-		xcb_void_cookie_t create_pixmap_cookie = xcb_create_pixmap(
-		    display->xcbconnection, 32, buffer->xcbpixmap, display->xcbscreen->root, width, height);
-		xcb_generic_error_t *pixmap_error = xcb_request_check(display->xcbconnection, create_pixmap_cookie);
-		if (pixmap_error) {
-		    ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
-		    free(pixmap_error);
-		    return -1;
-		}
 		xcb_gcontext_t gc = xcb_generate_id(display->xcbconnection);
 		xcb_create_gc(display->xcbconnection, gc, buffer->xcbpixmap, 0, NULL);
 		xcb_put_image(display->xcbconnection, XCB_IMAGE_FORMAT_Z_PIXMAP,
@@ -356,10 +338,6 @@ static int update_shm_pixmap(struct display * display, struct buffer *buffer, st
 		    width * height * 4, (uint8_t*)buffer->shm_data);
 		xcb_free_gc(display->xcbconnection, gc);
 	}
-        XRenderPictureAttributes pa;
-        pa.repeat = False;
-        buffer->xpicture = XRenderCreatePicture(display->x11display, buffer->xcbpixmap,
-            display->argb_format, CPRepeat, &pa);
 	return 0;
 }
 
@@ -371,7 +349,7 @@ static void * produce_BGRA_8888(struct waydroid_hwc_composer_device_1 *pdev, sp<
 	return (void *)dst_gb->getNativeBuffer()->handle;
 }
 
-static void getXRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf, int pixel_stride) {
+static void createDri3XRenderPicture (struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, struct window *window, struct buffer *buf, int pixel_stride) {
 	int width,height, stride, format, prime_fd, size;
 	int usage = GRALLOC_USAGE_HW_TEXTURE;
     if (pdev->display->gtype == GRALLOC_GBM) {
@@ -560,7 +538,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         buf->width=drm_handle->width;
         buf->height=drm_handle->height;
 	buf->pixel_stride = pixel_stride;
-        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        createDri3XRenderPicture(pdev, layer, window, buf,pixel_stride);
         if (!buf->xpicture) {
             delete buf;
             return NULL;
@@ -570,10 +548,28 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         auto width = cb_handle->width;
         auto height = cb_handle->height;
         auto hal_format = cb_handle->format;
-	//actually, it's running too slow by using shm to transfer graphic from graphic memory to x11 server
-	//after experiment we decide still use wayland to commit graphic for ranchu, and the code will keep here
 	create_shm_buffer(buf, width, height, hal_format,pixel_stride,layer->handle);
+	buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+	xcb_void_cookie_t create_pixmap_cookie;
+	if (window != NULL){
+		create_pixmap_cookie = xcb_create_pixmap(
+		    pdev->display->xcbconnection, 32, buf->xcbpixmap, window->xcbwindow, width, height);
+	}else {
+		create_pixmap_cookie = xcb_create_pixmap(
+		    pdev->display->xcbconnection, 32, buf->xcbpixmap, pdev->display->xcbscreen->root, width, height);
+	}
+	xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, create_pixmap_cookie);
+	if (pixmap_error) {
+	    ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
+	    free(pixmap_error);
+	    delete buf;
+	    return NULL;
+	}
 	update_shm_pixmap(pdev->display, buf,window);
+        XRenderPictureAttributes pa;
+        pa.repeat = False;
+        buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,
+            pdev->display->argb_format, CPRepeat, &pa);
         if (!buf->xpicture) {
             delete buf;
             return NULL;
@@ -582,7 +578,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         const struct cros_gralloc_handle *cros_handle = (const struct cros_gralloc_handle *)layer->handle;
         buf->width=cros_handle->width;
         buf->height=cros_handle->height;
-        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        createDri3XRenderPicture(pdev, layer, window, buf,pixel_stride);
         if (!buf->xpicture) {
             delete buf;
             return NULL;
@@ -591,7 +587,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         const X100_native_handle_t *x100_handle = (const X100_native_handle_t *)layer->handle;
         buf->width=x100_handle->iWidth;
         buf->height=x100_handle->iHeight;
-        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        createDri3XRenderPicture(pdev, layer, window, buf,pixel_stride);
         if (! buf->xpicture) {
             delete buf;
             return NULL;
@@ -600,7 +596,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
 	    buf->width=gc_handle->width;
 	    buf->height=gc_handle->height;
-        getXRenderPicture(pdev, layer, window, buf,pixel_stride);
+        createDri3XRenderPicture(pdev, layer, window, buf,pixel_stride);
         if (!buf->xpicture) {
             delete buf;
             return NULL;
