@@ -1542,14 +1542,14 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
     if (property_get("waydroid.xdg_runtime_dir", property, "/run/user/1000") > 0) {
         setenv("XDG_RUNTIME_DIR", property, 1);
     }
-    if (property_get("waydroid.wayland_display", property, "wayland-0") > 0) {
-        setenv("WAYLAND_DISPLAY", property, 1);
+    if (property_get("waydroid.x11_display", property, ":0") > 0) {
+        setenv("DISPLAY", property, 1);
     }
     if (property_get("ro.hardware.gralloc", property, "default") > 0) {
         pdev->display = create_display(property);
     }
     if (!pdev->display) {
-        ALOGE("failed to open wayland connection");
+        ALOGE("failed to open x11 connection");
         return -ENODEV;
     }else{
         pdev->display->x11_windows = &pdev->windows;

@@ -1433,7 +1433,16 @@ create_display(const char *gralloc)
     display->isMaximized = true;
 
     display->x11display = NULL;
-    display->x11display = XOpenDisplay("unix:/tmp/.X11-unix/X0");
+    ALOGI("x11 display env %s", getenv("DISPLAY"));
+    const char* display_env = getenv("DISPLAY");
+    std::string display_path = "unix:/tmp/.X11-unix/X0";
+    if (display_env && strlen(display_env) > 0) {
+        std::string display_str(display_env);
+        // remove the colon from :0
+        display_str.erase(std::remove(display_str.begin(), display_str.end(), ':'), display_str.end());
+        display_path = "unix:/tmp/.X11-unix/X" + display_str;
+    }
+    display->x11display = XOpenDisplay(display_path.c_str());
     if (!display->x11display){
         ALOGE("Couldn't connect to X11 display.");
 	return NULL;
