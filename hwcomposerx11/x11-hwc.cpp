@@ -1056,6 +1056,7 @@ void *event_loop_thread(void *arg) {
     }
 
     ALOGE("Exiting XCB event loop");
+    abort();
     return NULL;
 }
 
