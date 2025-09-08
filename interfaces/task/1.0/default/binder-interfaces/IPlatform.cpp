@@ -15,6 +15,14 @@ IMPLEMENT_META_INTERFACE(Platform, "android.openfde.IPlatform")
   return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
 }
 
+::android::binder::Status IPlatformDefault::commitText(const ::android::String16&) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IPlatformDefault::sendKeyEvent(int32_t, int32_t) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
 }  // namespace waydroid
 
 }  // namespace lineageos
@@ -63,6 +71,70 @@ BpPlatform::BpPlatform(const ::android::sp<::android::IBinder>& _aidl_impl)
   return _aidl_status;
 }
 
+::android::binder::Status BpPlatform::commitText(const ::android::String16& text) {
+  ::android::Parcel _aidl_data;
+  ::android::Parcel _aidl_reply;
+  ::android::status_t _aidl_ret_status = ::android::OK;
+  ::android::binder::Status _aidl_status;
+  _aidl_ret_status = _aidl_data.writeInterfaceToken(getInterfaceDescriptor());
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = _aidl_data.writeString16(text);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = remote()->transact(::android::IBinder::FIRST_CALL_TRANSACTION + 19 /* commitText */, _aidl_data, &_aidl_reply);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = _aidl_status.readFromParcel(_aidl_reply);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  if (!_aidl_status.isOk()) {
+    return _aidl_status;
+  }
+  _aidl_error:
+  _aidl_status.setFromStatusT(_aidl_ret_status);
+  return _aidl_status;
+}
+
+
+::android::binder::Status BpPlatform::sendKeyEvent(int32_t action, int32_t code) {
+  ::android::Parcel _aidl_data;
+  ::android::Parcel _aidl_reply;
+  ::android::status_t _aidl_ret_status = ::android::OK;
+  ::android::binder::Status _aidl_status;
+  _aidl_ret_status = _aidl_data.writeInterfaceToken(getInterfaceDescriptor());
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = _aidl_data.writeInt32(action);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = _aidl_data.writeInt32(code);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = remote()->transact(::android::IBinder::FIRST_CALL_TRANSACTION + 20 /* sendKeyEvent */, _aidl_data, &_aidl_reply);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  _aidl_ret_status = _aidl_status.readFromParcel(_aidl_reply);
+  if (((_aidl_ret_status) != (::android::OK))) {
+    goto _aidl_error;
+  }
+  if (!_aidl_status.isOk()) {
+    return _aidl_status;
+  }
+  _aidl_error:
+  _aidl_status.setFromStatusT(_aidl_ret_status);
+  return _aidl_status;
+}
+
+
 }  // namespace waydroid
 
 }  // namespace lineageos
@@ -98,6 +170,53 @@ namespace openfde {
     }
     _aidl_ret_status = _aidl_reply->writeString16(_aidl_return);
     if (((_aidl_ret_status) != (::android::OK))) {
+      break;
+    }
+  }
+  break;
+  case ::android::IBinder::FIRST_CALL_TRANSACTION + 19 /* commitText */:
+  {
+    ::android::String16 in_text;
+    if (!(_aidl_data.checkInterface(this))) {
+      _aidl_ret_status = ::android::BAD_TYPE;
+      break;
+    }
+    _aidl_ret_status = _aidl_data.readString16(&in_text);
+    if (((_aidl_ret_status) != (::android::OK))) {
+      break;
+    }
+    ::android::binder::Status _aidl_status(commitText(in_text));
+    _aidl_ret_status = _aidl_status.writeToParcel(_aidl_reply);
+    if (((_aidl_ret_status) != (::android::OK))) {
+      break;
+    }
+    if (!_aidl_status.isOk()) {
+      break;
+    }
+  }
+  break;
+  case ::android::IBinder::FIRST_CALL_TRANSACTION + 20 /* sendKeyEvent */:
+  {
+    int32_t in_action;
+    int32_t in_code;
+    if (!(_aidl_data.checkInterface(this))) {
+      _aidl_ret_status = ::android::BAD_TYPE;
+      break;
+    }
+    _aidl_ret_status = _aidl_data.readInt32(&in_action);
+    if (((_aidl_ret_status) != (::android::OK))) {
+      break;
+    }
+    _aidl_ret_status = _aidl_data.readInt32(&in_code);
+    if (((_aidl_ret_status) != (::android::OK))) {
+      break;
+    }
+    ::android::binder::Status _aidl_status(sendKeyEvent(in_action, in_code));
+    _aidl_ret_status = _aidl_status.writeToParcel(_aidl_reply);
+    if (((_aidl_ret_status) != (::android::OK))) {
+      break;
+    }
+    if (!_aidl_status.isOk()) {
       break;
     }
   }
