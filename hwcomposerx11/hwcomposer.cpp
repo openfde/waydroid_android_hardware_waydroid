@@ -94,7 +94,7 @@ struct waydroid_hwc_composer_device_1 {
 };
 
 int cancel_maximum(xcb_connection_t *conn,xcb_screen_t * screen, xcb_window_t main_win);
-static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
+static struct buffer *get_x11_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window);
 
 static void erase_cursor_layer_buffer(waydroid_hwc_composer_device_1* pdev, buffer_handle_t handle){
     auto it = pdev->display->buffer_map.find(handle);
@@ -152,7 +152,7 @@ static bool update_cursor_surface(waydroid_hwc_composer_device_1* pdev, hwc_laye
         }
     }
 
-    struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,NULL);
+    struct buffer *buf = get_x11_buffer(pdev, fb_layer, layer,NULL);
     if (!buf) {
         ALOGE("Failed to get wayland buffer");
         return false;
@@ -436,59 +436,59 @@ static void createDri3XRenderPicture (struct waydroid_hwc_composer_device_1 *pde
 		prime_fd = drm_handle->prime_fd;
 		size = dst_gb->getStride() * height * 4;
 		stride = dst_gb->getStride() * 4 ;
-    }
-    if (window != NULL ) {
-	//ALOGE("Found  app: %s layer  ,drop %d", window->appID.c_str(), lastlayer);
-        xcb_window_t xcbwindow = window->xcbwindow;
-        int x11_fd = dup(prime_fd);
-        if (x11_fd >= 0) {
-            fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
-        }else {
-            ALOGE("dup fd failed");
+    }else {//end of the formating transfer to HAL_PIXEL_FORMAT_BGRA_8888
+        if (buf->xcbpixmap) { // if the format is HAL_PIXEL_FORMAT_BGRA_8888, and the xcbpixmap is already created, no need to recreate
             return ;
         }
+    }
+    int x11_fd = dup(prime_fd);
+    if (x11_fd >= 0) {
+        fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
+    }else {
+        ALOGE("dup fd failed");
+        return ;
+    }
 
-        buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-        XRenderPictureAttributes pa;
-        pa.repeat = False;
+    /*
+    the original buffer is the same handle, but the format is not BGRA_8888, we create a new dstination buffer to store the converted data
+    so we need to recreate the xcbpimap and xpicture according to the new destination buffer
+    */
+    if (buf->xcbpixmap) {
+        xcb_free_pixmap(pdev->display->xcbconnection, buf->xcbpixmap);
+        buf->xcbpixmap = 0;
+    }
+    buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+    XRenderPictureAttributes pa;
+    pa.repeat = False;
+
+    xcb_void_cookie_t pixmap_cookie;
+    
+    if (window != NULL ) {
+        //ALOGE("Found  app: %s layer  ,drop %d", window->appID.c_str(), lastlayer);
+        xcb_window_t xcbwindow = window->xcbwindow;
         xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
             buf->xcbpixmap, xcbwindow, size, width, height, stride, 32, 32, x11_fd);
-        xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-        if (pixmap_error) {
-           ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
-           free(pixmap_error);
-           close(x11_fd);
-           return ;
-        }
-        buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
-        close(x11_fd);
-    }else{
-        int x11_fd = dup(prime_fd);
-        if (x11_fd >= 0) {
-            fcntl(x11_fd, F_SETFD, FD_CLOEXEC);
-        }else {
-            ALOGE("dup fd failed");
-            return ;
-        }
-
-        buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-        XRenderPictureAttributes pa;
-        pa.repeat = False;
+    }else {
         xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
             buf->xcbpixmap, pdev->display->xcbscreen->root, size, width, height, stride, 32, 32, x11_fd);
-        xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
-        if (pixmap_error) {
-           ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
-           free(pixmap_error);
-           close(x11_fd);
-           return ;
-        }
-        buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
-        close(x11_fd);
     }
+    xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
+    if (pixmap_error) {
+        ALOGE("XCB error in xcb_dri3_pixmap_from_buffer: %d", pixmap_error->error_code);
+        free(pixmap_error);
+        close(x11_fd);
+        return ;
+    }
+    if (buf->xpicture) {
+        XRenderFreePicture(pdev->display->x11display, buf->xpicture);
+        buf->xpicture = 0;
+    }
+    buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,pdev->display->argb_format, CPRepeat, &pa);
+    close(x11_fd);
 }
 
-static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window)
+
+static struct buffer *get_x11_buffer(struct waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos,struct window *window)
 {
     uint32_t format;
     uint32_t pixel_stride;
@@ -522,6 +522,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
                 return it->second;
             }
         } else {
+            createDri3XRenderPicture(pdev, layer, window, it->second,pixel_stride);
             return it->second;
 	}
     }
@@ -537,7 +538,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         struct gralloc_handle_t *drm_handle = (struct gralloc_handle_t *)layer->handle;
         buf->width=drm_handle->width;
         buf->height=drm_handle->height;
-	buf->pixel_stride = pixel_stride;
+	    buf->pixel_stride = pixel_stride;
         createDri3XRenderPicture(pdev, layer, window, buf,pixel_stride);
         if (!buf->xpicture) {
             delete buf;
@@ -548,24 +549,24 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
         auto width = cb_handle->width;
         auto height = cb_handle->height;
         auto hal_format = cb_handle->format;
-	create_shm_buffer(buf, width, height, hal_format,pixel_stride,layer->handle);
-	buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
-	xcb_void_cookie_t create_pixmap_cookie;
-	if (window != NULL){
-		create_pixmap_cookie = xcb_create_pixmap(
-		    pdev->display->xcbconnection, 32, buf->xcbpixmap, window->xcbwindow, width, height);
-	}else {
-		create_pixmap_cookie = xcb_create_pixmap(
-		    pdev->display->xcbconnection, 32, buf->xcbpixmap, pdev->display->xcbscreen->root, width, height);
-	}
-	xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, create_pixmap_cookie);
-	if (pixmap_error) {
-	    ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
-	    free(pixmap_error);
-	    delete buf;
-	    return NULL;
-	}
-	update_shm_pixmap(pdev->display, buf,window);
+        create_shm_buffer(buf, width, height, hal_format,pixel_stride,layer->handle);
+        buf->xcbpixmap = xcb_generate_id(pdev->display->xcbconnection);
+        xcb_void_cookie_t create_pixmap_cookie;
+        if (window != NULL){
+            create_pixmap_cookie = xcb_create_pixmap(
+                pdev->display->xcbconnection, 32, buf->xcbpixmap, window->xcbwindow, width, height);
+        }else {
+            create_pixmap_cookie = xcb_create_pixmap(
+                pdev->display->xcbconnection, 32, buf->xcbpixmap, pdev->display->xcbscreen->root, width, height);
+        }
+        xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, create_pixmap_cookie);
+        if (pixmap_error) {
+            ALOGE("XCB error in xcb_create_pixmap: %d\n", pixmap_error->error_code);
+            free(pixmap_error);
+            delete buf;
+            return NULL;
+        }
+	    update_shm_pixmap(pdev->display, buf,window);
         XRenderPictureAttributes pa;
         pa.repeat = False;
         buf->xpicture = XRenderCreatePicture(pdev->display->x11display, buf->xcbpixmap,
@@ -1124,7 +1125,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             continue;
         }
 
-        struct buffer *buf = get_wl_buffer(pdev, fb_layer, layer,window);
+        struct buffer *buf = get_x11_buffer(pdev, fb_layer, layer,window);
         if (!buf) {
             ALOGE("Failed to get wayland buffer");
             if (fb_layer->acquireFenceFd != -1) {
