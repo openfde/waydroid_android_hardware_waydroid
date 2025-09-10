@@ -466,10 +466,10 @@ static void createDri3XRenderPicture (struct waydroid_hwc_composer_device_1 *pde
     if (window != NULL ) {
         //ALOGE("Found  app: %s layer  ,drop %d", window->appID.c_str(), lastlayer);
         xcb_window_t xcbwindow = window->xcbwindow;
-        xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
+        pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
             buf->xcbpixmap, xcbwindow, size, width, height, stride, 32, 32, x11_fd);
     }else {
-        xcb_void_cookie_t pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
+        pixmap_cookie = xcb_dri3_pixmap_from_buffer(pdev->display->xcbconnection,
             buf->xcbpixmap, pdev->display->xcbscreen->root, size, width, height, stride, 32, 32, x11_fd);
     }
     xcb_generic_error_t *pixmap_error = xcb_request_check(pdev->display->xcbconnection, pixmap_cookie);
