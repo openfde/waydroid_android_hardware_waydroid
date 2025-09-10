@@ -1024,10 +1024,24 @@ void *event_loop_thread(void *arg) {
             }
             case XCB_BUTTON_PRESS:{
                     ALOGV("XCB_BUTTON_PRESS received");
+                    xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
+                    xcb_window_t focus_window = xcb_button_event->event;
+                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                        ALOGE("XCB_BUTTON_PRESS Task : %s", it->first.c_str());
+                        if (it->second->xcbwindow == focus_window){
+                            ALOGE("XCB_BUTTON_PRESS Task %s gained focus", it->first.c_str());
+                            if (display->task != nullptr) {
+                                if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                    if(isValidInteger(it->first)){
+                                        display->task->setFocusedTask(stoi(it->first));
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (dispatcher.button_press_cb) {
                         dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
                     }
-                    xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
                     if(display->im){
                         xcb_point_t spot = {xcb_button_event->root_x, xcb_button_event->root_y};
                         ALOGI("on button press update_spot_location x: %d, y: %d", spot.x, spot.y);
