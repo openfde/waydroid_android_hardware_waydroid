@@ -62,6 +62,7 @@
 #include <cutils/properties.h>
 
 #include <xkbcommon/xkbcommon.h>
+#include <X11/XKBlib.h>
 
 #include <wayland-client.h>
 #include <wayland-android-client-protocol.h>
@@ -985,6 +986,22 @@ void *event_loop_thread(void *arg) {
                     }
                 }
                 disable_auto_repeat(display->x11display);
+                bool internalCapsLockState = property_get_bool("openfde.caps.lock.state", false);
+                XkbStateRec state;
+                XkbGetState(display->x11display, XkbUseCoreKbd, &state);
+                bool externalCapsLockState = state.locked_mods & LockMask;
+                if(internalCapsLockState != externalCapsLockState){
+                    if (externalCapsLockState) {
+                        ALOGE("External Caps Lock is ON");
+                    }else{
+                        ALOGE("External Caps Lock is OFF");
+                    }
+                    std::string str_target_state = internalCapsLockState ? "0" : "1";
+                    property_set("openfde.caps.lock.state", str_target_state.c_str());
+                    ALOGE("set openfde.caps.lock.state %d", !internalCapsLockState);
+                    send_key_event(display, 58, (wl_keyboard_key_state)1);
+                    send_key_event(display, 58, (wl_keyboard_key_state)0);
+                }
                 break;
             }
             case XCB_FOCUS_OUT:{
@@ -1486,6 +1503,8 @@ create_display(const char *gralloc)
     if(!result){
         return NULL;
     }
+
+    property_set("openfde.caps.lock.state", "0");
 
     property_set("openfde.x11.display", "1");
     sem_init(&display->egl_go, 0, 0);
