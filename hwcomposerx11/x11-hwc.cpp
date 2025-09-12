@@ -528,6 +528,12 @@ void on_key_release(void *data, xcb_key_release_event_t *event) {
         display->ctrl_key_pressed = 0;
     }
     send_key_event((struct display*)data, key, (wl_keyboard_key_state)0);
+    if(key == KEY_CAPSLOCK){
+        bool internalCapsLockState = property_get_bool("openfde.caps.lock.state", false);
+        std::string str_target_state = internalCapsLockState ? "0" : "1";
+        property_set("openfde.caps.lock.state", str_target_state.c_str());
+        ALOGE("on_key_release update openfde.caps.lock.state %d", !internalCapsLockState);
+    }
 }
 
 static void handle_pinch_update(void *data, uint32_t time, wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t scale, wl_fixed_t rotation)
@@ -999,8 +1005,8 @@ void *event_loop_thread(void *arg) {
                     std::string str_target_state = internalCapsLockState ? "0" : "1";
                     property_set("openfde.caps.lock.state", str_target_state.c_str());
                     ALOGE("set openfde.caps.lock.state %d", !internalCapsLockState);
-                    send_key_event(display, 58, (wl_keyboard_key_state)1);
-                    send_key_event(display, 58, (wl_keyboard_key_state)0);
+                    send_key_event(display, KEY_CAPSLOCK, (wl_keyboard_key_state)1);
+                    send_key_event(display, KEY_CAPSLOCK, (wl_keyboard_key_state)0);
                 }
                 break;
             }
