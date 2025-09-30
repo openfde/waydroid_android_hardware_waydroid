@@ -985,7 +985,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 }
             }
             // This window ID doesn't match with any selected app IDs from prop, so kill it
-            if (!foundApp || (it->second && !it->second->isActive)) {
+            if ((!foundApp || (it->second && !it->second->isActive)) && !property_get_bool(it->first.c_str(), false)) {
                 if (it->second)
                     destroy_window(it->second);
                 pdev->windows.erase(it++);
@@ -1094,6 +1094,12 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         pdev->windows[layer_tid] = create_window(pdev->display, pdev->use_subsurface, layer_aid, layer_tid, {0, 0, 0, 0});
                         std::string windows_size_str = std::to_string(pdev->windows.size());
                         property_set("waydroid.open_windows", windows_size_str.c_str());
+                        if (layer_tid != "Openfde" && layer_tid != "none" && layer_tid != "0") {
+                            ALOGI("create_window for layer_tid %s", layer_tid.c_str());
+                            if(isValidInteger(layer_tid)){
+                                property_set(layer_tid.c_str(), "true");
+                            }
+                        }
                     }
                     if (pdev->windows.find(layer_tid) != pdev->windows.end())
                         window = pdev->windows[layer_tid];
