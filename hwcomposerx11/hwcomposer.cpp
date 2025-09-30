@@ -985,7 +985,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 }
             }
             // This window ID doesn't match with any selected app IDs from prop, so kill it
-            if ((!foundApp || (it->second && !it->second->isActive)) && !property_get_bool(it->first.c_str(), false)) {
+            if ((!foundApp || (it->second && !it->second->isActive)) && !property_get_bool(("fde_running_task_" + it->first).c_str(), false)) {
                 if (it->second)
                     destroy_window(it->second);
                 pdev->windows.erase(it++);
@@ -1097,7 +1097,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                         if (layer_tid != "Openfde" && layer_tid != "none" && layer_tid != "0") {
                             ALOGI("create_window for layer_tid %s", layer_tid.c_str());
                             if(isValidInteger(layer_tid)){
-                                property_set(layer_tid.c_str(), "true");
+                                property_set(("fde_running_task_" + layer_tid).c_str(), "true");
                             }
                         }
                     }

@@ -1048,7 +1048,7 @@ void *event_loop_thread(void *arg) {
                                 if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
                                     ALOGI("remove task %s", it->first.c_str());
                                     if(isValidInteger(it->first)){
-                                        property_set(it->first.c_str(), "false");
+                                        property_set(("fde_running_task_" + it->first).c_str(), "false");
                                         display->task->removeTask(stoi(it->first));
                                     }
                                 }else{
