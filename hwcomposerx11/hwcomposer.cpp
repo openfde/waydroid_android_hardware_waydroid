@@ -259,10 +259,11 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
     bool foundCursorLayer = false;
     for (size_t i = 0; i < contents->numHwLayers; i++) {
         hwc_layer_1_t* fb_layer = &contents->hwLayers[i];
+        std::string layer_name = pdev->display->layer_names[i];
 
         if (fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET)
             continue;
-        if (fb_layer->flags & HWC_SKIP_LAYER)
+        if (fb_layer->flags & HWC_SKIP_LAYER && !isStartWithSpecialSymbols(layer_name))
             continue;
 
         /* skipped layers have to be composited by SurfaceFlinger; so in order
@@ -976,7 +977,7 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     std::string LayerRawName;
                     std::istringstream issLayer(layer_name);
                     std::getline(issLayer, LayerRawName, '#');
-                    if (LayerRawName == it->first) {
+                    if (LayerRawName == it->first || layer_name == it->first) {
                         it->second->lastLayer = 0;
                         it->second->last_layer_buffer = nullptr;
                         foundApp = true;
@@ -1020,8 +1021,8 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         }
 
         hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
-
-        if (fb_layer->flags & HWC_SKIP_LAYER) {
+        std::string layer_name = pdev->display->layer_names[layer];
+        if (fb_layer->flags & HWC_SKIP_LAYER && !isStartWithSpecialSymbols(layer_name)) {
             if (fb_layer->acquireFenceFd != -1) {
                 close(fb_layer->acquireFenceFd);
             }
@@ -1036,7 +1037,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
             }
             continue;
         }
-
         if (fb_layer->compositionType !=
             (pdev->use_subsurface ? HWC_OVERLAY : HWC_FRAMEBUFFER_TARGET) && layer == l) {
             if (fb_layer->acquireFenceFd != -1) {
@@ -1053,7 +1053,6 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
         }
 
         struct window *window = NULL;
-        std::string layer_name = pdev->display->layer_names[layer];
 
         if (active_apps == "Openfde") {
             // Show everything in a single window
@@ -1120,6 +1119,15 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                 }
                 if (pdev->windows.find(LayerRawName) != pdev->windows.end()) {
                     window = pdev->windows[LayerRawName];
+                }
+            }else if(isStartWithSpecialSymbols(layer_name)){
+                if (pdev->windows.find(layer_name) == pdev->windows.end()) {
+                    pdev->windows[layer_name] = create_window(pdev->display, pdev->use_subsurface, layer_name, "none", {0, 0, 0, 0});
+                    std::string windows_size_str = std::to_string(pdev->windows.size());
+                    property_set("waydroid.open_windows", windows_size_str.c_str());
+                }
+                if (pdev->windows.find(layer_name) != pdev->windows.end()) {
+                    window = pdev->windows[layer_name];
                 }
             }
         }

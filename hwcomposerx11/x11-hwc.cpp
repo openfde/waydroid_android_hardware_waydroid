@@ -1280,6 +1280,9 @@ void set_window_class(xcb_connection_t *connection, xcb_window_t window, const s
     xcb_flush(connection);
 }
 
+bool isStartWithSpecialSymbols(const std::string& layer_name) {
+    return !layer_name.empty() && layer_name[0] == '#';
+}
 
 struct window *
 create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
@@ -1422,7 +1425,7 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
     }
 
     // hide Toast window in taskbar
-    if (appID_title == "Toast") {
+    if (appID_title == "Toast" || isStartWithSpecialSymbols(appID_title)) {
         xcb_intern_atom_cookie_t cookie_net_wm_state =
             xcb_intern_atom(display->xcbconnection, 0, strlen("_NET_WM_STATE"), "_NET_WM_STATE");
         xcb_intern_atom_cookie_t cookie_skip_taskbar =

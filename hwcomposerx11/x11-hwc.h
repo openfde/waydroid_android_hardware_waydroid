@@ -308,3 +308,4 @@ void disable_auto_repeat(Display *display);
 void enable_auto_repeat(Display *display);
 int create_shm_buffer(struct buffer *buffer, int width, int height, int format, int pixel_stride, buffer_handle_t target);
 bool isValidInteger(const std::string& str);
+bool isStartWithSpecialSymbols(const std::string& layer_name);
