@@ -251,6 +251,14 @@ destroy_window(struct window *window, bool keep)
     }
      if (window->xcbwindow) {
         ALOGE("destroy window window->xcbwindow: %u", window->xcbwindow);
+        for (auto it = window->display->x11_windows->begin(); it != window->display->x11_windows->end(); it++) {
+            if (it->second->xcbwindow == window->xcbwindow){
+                if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                    ALOGI("destroy window window->xcbwindow: %u Task %s XAutoRepeatOn", window->xcbwindow, it->first.c_str());
+                    enable_auto_repeat(window->display->x11display);
+                }
+            }
+        }
         xcb_unmap_window(window->display->xcbconnection, window->xcbwindow);
         xcb_destroy_window(window->display->xcbconnection, window->xcbwindow);
         window->xcbwindow = 0;
@@ -994,9 +1002,9 @@ void *event_loop_thread(void *arg) {
                 xcb_window_t focused_win = focus->event;
                 std::scoped_lock lock(display->windowsMutex);
                 for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                    ALOGE("Task : %s", it->first.c_str());
+                    ALOGI("Task : %s", it->first.c_str());
                     if (it->second->xcbwindow == focused_win){
-                        ALOGE("Task %s gained focus", it->first.c_str());
+                        ALOGI("Task %s focus_in", it->first.c_str());
                         if (display->task != nullptr) {
                             if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
                                 if(isValidInteger(it->first)){
@@ -1004,28 +1012,41 @@ void *event_loop_thread(void *arg) {
                                 }
                             }
                         }
+                        if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                            ALOGI("XCB_FOCUS_IN focus_win: %u task %s XAutoRepeatOff", focused_win, it->first.c_str());
+                            disable_auto_repeat(display->x11display);
+                        }
                     }
                 }
-                disable_auto_repeat(display->x11display);
                 XkbStateRec state;
                 XkbGetState(display->x11display, XkbUseCoreKbd, &state);
                 bool externalCapsLockState = state.locked_mods & LockMask;
                 if (externalCapsLockState) {
-                    ALOGE("XCB_FOCUS_IN External Caps Lock is ON");
+                    ALOGI("XCB_FOCUS_IN External Caps Lock is ON");
                 }else{
-                    ALOGE("XCB_FOCUS_IN External Caps Lock is OFF");
+                    ALOGI("XCB_FOCUS_IN External Caps Lock is OFF");
                 }
                 std::scoped_lock caps_lock(display->internalCapsLockStateMutex);
                 if(display->internalCapsLockState != externalCapsLockState){
                     display->internalCapsLockState = externalCapsLockState;
-                    ALOGE("XCB_FOCUS_IN update display->internalCapsLockState: %d", display->internalCapsLockState);
+                    ALOGI("XCB_FOCUS_IN update display->internalCapsLockState: %d", display->internalCapsLockState);
                     send_key_event(display, KEY_CAPSLOCK, (wl_keyboard_key_state)1);
                     send_key_event(display, KEY_CAPSLOCK, (wl_keyboard_key_state)0);
                 }
                 break;
             }
             case XCB_FOCUS_OUT:{
-                enable_auto_repeat(display->x11display);
+                xcb_focus_out_event_t *focus_out = (xcb_focus_out_event_t *)event;
+                xcb_window_t focus_out_win = focus_out->event;
+                for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                    if (it->second->xcbwindow == focus_out_win){
+                        ALOGI("Task : %s focus_out", it->first.c_str());
+                        if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                            ALOGI("XCB_FOCUS_OUT focus_out_win: %u task %s XAutoRepeatOn", focus_out_win, it->first.c_str());
+                            enable_auto_repeat(display->x11display);
+                        }
+                    }
+                }
                 for (size_t i = 0; i < display->keysDown.size(); i++) {
                     if (display->keysDown[i] == WL_KEYBOARD_KEY_STATE_PRESSED) {
                         send_key_event(display, i, WL_KEYBOARD_KEY_STATE_RELEASED);
@@ -1035,13 +1056,13 @@ void *event_loop_thread(void *arg) {
             }
             case XCB_CLIENT_MESSAGE: {
                 xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
-                ALOGE("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
+                ALOGI("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
                 xcb_window_t focused_win = cm ->window;
                 std::scoped_lock lock(display->windowsMutex);
                 for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                    ALOGE("Task : %s", it->first.c_str());
+                    ALOGI("Task : %s", it->first.c_str());
                     if (it->second->xcbwindow == focused_win){
-                        ALOGE("it->second->wm_protocols: %d, it->second->wm_delete_window: %d",
+                        ALOGI("it->second->wm_protocols: %d, it->second->wm_delete_window: %d",
                             it->second->wm_protocols, it->second->wm_delete_window);
                         if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
                             if (display->task != nullptr) {
@@ -1054,6 +1075,10 @@ void *event_loop_thread(void *arg) {
                                 }else{
                                     ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
                                 }
+                                if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                                    ALOGI("XCB_CLIENT_MESSAGE delete window: %u task %s XAutoRepeatOn", focused_win, it->first.c_str());
+                                    enable_auto_repeat(display->x11display);
+                                }
                             }
                         }
                     }
@@ -1065,9 +1090,9 @@ void *event_loop_thread(void *arg) {
                     xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
                     xcb_window_t focus_window = xcb_button_event->event;
                     for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                        ALOGE("XCB_BUTTON_PRESS Task : %s", it->first.c_str());
+                        ALOGI("XCB_BUTTON_PRESS Task : %s", it->first.c_str());
                         if (it->second->xcbwindow == focus_window){
-                            ALOGE("XCB_BUTTON_PRESS Task %s gained focus", it->first.c_str());
+                            ALOGI("XCB_BUTTON_PRESS Task %s gained focus", it->first.c_str());
                             if (display->task != nullptr) {
                                 if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
                                     if(isValidInteger(it->first)){
@@ -1463,16 +1488,14 @@ create_window(struct display *display, bool use_subsurfaces, std::string appID, 
 
 void disable_auto_repeat(Display *display) {
     ALOGD("disable keyboard auto_repeat_mode");
-    XKeyboardControl control;
-    control.auto_repeat_mode = AutoRepeatModeOff;
-    XChangeKeyboardControl(display, KBAutoRepeatMode, &control);
+    XAutoRepeatOff(display);
+    XFlush(display);
 }
 
 void enable_auto_repeat(Display *display) {
     ALOGD("enable keyboard auto_repeat_mode");
-    XKeyboardControl control;
-    control.auto_repeat_mode = AutoRepeatModeOn;
-    XChangeKeyboardControl(display, KBAutoRepeatMode, &control);
+    XAutoRepeatOn(display);
+    XFlush(display);
 }
 
 
