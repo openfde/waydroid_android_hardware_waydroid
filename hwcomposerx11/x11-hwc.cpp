@@ -1309,6 +1309,10 @@ bool isStartWithSpecialSymbols(const std::string& layer_name) {
     return !layer_name.empty() && layer_name[0] == '#';
 }
 
+bool isStartWithTidSymbols(const std::string& layer_name){
+    return !layer_name.empty() && layer_name.find("TID") != std::string::npos;
+}
+
 struct window *
 create_window(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
 {

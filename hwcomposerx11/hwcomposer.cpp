@@ -260,10 +260,11 @@ static int hwc_prepare(hwc_composer_device_1_t* dev,
     for (size_t i = 0; i < contents->numHwLayers; i++) {
         hwc_layer_1_t* fb_layer = &contents->hwLayers[i];
         std::string layer_name = pdev->display->layer_names[i];
+        ALOGD("hwc_prepare layer_name: %s", layer_name.c_str());
 
         if (fb_layer->compositionType == HWC_FRAMEBUFFER_TARGET)
             continue;
-        if (fb_layer->flags & HWC_SKIP_LAYER && !isStartWithSpecialSymbols(layer_name))
+        if (fb_layer->flags & HWC_SKIP_LAYER && !isStartWithSpecialSymbols(layer_name) && !isStartWithTidSymbols(layer_name))
             continue;
 
         /* skipped layers have to be composited by SurfaceFlinger; so in order
@@ -688,7 +689,7 @@ static int adjust_window_geo(struct waydroid_hwc_composer_device_1 * pdev, hwc_l
 
 
 
-    ALOGI("src x %d y%d dst width %d dst height %d values.x %d, values.y %d app %s lastLayer %d  display right%d", src_x,src_y, dst_width, dst_height,
+    ALOGD("src x %d y%d dst width %d dst height %d values.x %d, values.y %d app %s lastLayer %d  display right%d", src_x,src_y, dst_width, dst_height,
 			values.x,values.y,window->appID.c_str(), window->lastLayer, layer->displayFrame.right);
     XRenderComposite(pdev->display->x11display, PictOpOver, buf->xpicture, None, window->backxpicture,
                   src_x, src_y, 0, 0, values.x, values.y, dst_width, dst_height);
@@ -1022,15 +1023,16 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 
         hwc_layer_1_t* fb_layer = &contents->hwLayers[layer];
         std::string layer_name = pdev->display->layer_names[layer];
-        if (fb_layer->flags & HWC_SKIP_LAYER && !isStartWithSpecialSymbols(layer_name)) {
+        ALOGD("hwc_set layer_name: %s", layer_name.c_str());
+        if (fb_layer->flags & HWC_SKIP_LAYER && !isStartWithSpecialSymbols(layer_name) && !isStartWithTidSymbols(layer_name)) {
             if (fb_layer->acquireFenceFd != -1) {
                 close(fb_layer->acquireFenceFd);
             }
             continue;
         }
 
-	//if ((fb_layer->flags & HWC_IS_CURSOR_LAYER) && pdev->display->cursor_surface) {
-	if (fb_layer->flags & HWC_IS_CURSOR_LAYER)  {
+        //if ((fb_layer->flags & HWC_IS_CURSOR_LAYER) && pdev->display->cursor_surface) {
+        if (fb_layer->flags & HWC_IS_CURSOR_LAYER)  {
             // Cursor was already handled separately
             if (fb_layer->acquireFenceFd != -1) {
                 close(fb_layer->acquireFenceFd);
