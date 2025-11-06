@@ -99,6 +99,18 @@ enum {
     GRALLOC_FTG340
 };
 
+enum x11_keyboard_key_state {
+        /**
+         * key is not pressed
+         */
+        X11_KEYBOARD_KEY_STATE_RELEASED = 0,
+        /**
+         * key is pressed
+         */
+        X11_KEYBOARD_KEY_STATE_PRESSED = 1,
+};
+
+
 #define MAX_TOUCHPOINTS 10
 
 struct layerFrame {
