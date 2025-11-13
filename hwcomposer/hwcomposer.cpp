@@ -326,7 +326,7 @@ static struct buffer *get_wl_buffer(struct waydroid_hwc_composer_device_1 *pdev,
             }
             update_shm_buffer(pdev->display, buf);
         }
-    } else if (pdev->display->gtype == GRALLOC_LEOPARD) {
+    } else if (pdev->display->gtype == GRALLOC_FTG340) {
         const gc_private_handle_t *gc_handle = (const gc_private_handle_t *)layer->handle;
         if (pdev->display->dmabuf) {
             ret = create_dmabuf_wl_buffer(pdev->display, buf, gc_handle->width, gc_handle->height, gc_handle->format,
