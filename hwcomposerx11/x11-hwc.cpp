@@ -1025,23 +1025,30 @@ void *event_loop_thread(void *arg) {
             case XCB_FOCUS_IN:{
                 xcb_focus_in_event_t *focus = (xcb_focus_in_event_t *)event;
                 xcb_window_t focused_win = focus->event;
-                std::scoped_lock lock(display->windowsMutex);
-                for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                    ALOGI("Task : %s", it->first.c_str());
-                    if (it->second->xcbwindow == focused_win){
-                        ALOGI("Task %s focus_in", it->first.c_str());
-                        if (display->task != nullptr) {
-                            if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
-                                if(isValidInteger(it->first)){
-                                    display->task->setFocusedTask(stoi(it->first));
+                int taskId = -1;
+                {
+                    std::scoped_lock lock(display->windowsMutex);
+                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                        ALOGI("Task : %s", it->first.c_str());
+                        if (it->second->xcbwindow == focused_win){
+                            ALOGI("Task %s focus_in", it->first.c_str());
+                            if (display->task != nullptr) {
+                                if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                    if(isValidInteger(it->first)){
+                                        taskId = stoi(it->first);
+                                    }
                                 }
                             }
-                        }
-                        if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
-                            ALOGI("XCB_FOCUS_IN focus_win: %u task %s XAutoRepeatOff", focused_win, it->first.c_str());
-                            disable_auto_repeat(display->x11display);
+                            if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                                ALOGI("XCB_FOCUS_IN focus_win: %u task %s XAutoRepeatOff", focused_win, it->first.c_str());
+                                disable_auto_repeat(display->x11display);
+                            }
                         }
                     }
+                }
+                if(taskId != -1){
+                    display->task->setFocusedTask(taskId);
+                    ALOGI("display->task->setFocusedTask: %d", taskId);
                 }
                 XkbStateRec state;
                 XkbGetState(display->x11display, XkbUseCoreKbd, &state);
@@ -1051,12 +1058,14 @@ void *event_loop_thread(void *arg) {
                 }else{
                     ALOGD("XCB_FOCUS_IN External Caps Lock is OFF");
                 }
-                std::scoped_lock caps_lock(display->internalCapsLockStateMutex);
-                if(display->internalCapsLockState != externalCapsLockState){
-                    display->internalCapsLockState = externalCapsLockState;
-                    ALOGD("XCB_FOCUS_IN update display->internalCapsLockState: %d", display->internalCapsLockState);
-                    send_key_event(display, KEY_CAPSLOCK, X11_KEYBOARD_KEY_STATE_PRESSED);
-                    send_key_event(display, KEY_CAPSLOCK, X11_KEYBOARD_KEY_STATE_RELEASED);
+                {
+                    std::scoped_lock caps_lock(display->internalCapsLockStateMutex);
+                    if(display->internalCapsLockState != externalCapsLockState){
+                        display->internalCapsLockState = externalCapsLockState;
+                        ALOGD("XCB_FOCUS_IN update display->internalCapsLockState: %d", display->internalCapsLockState);
+                        send_key_event(display, KEY_CAPSLOCK, X11_KEYBOARD_KEY_STATE_PRESSED);
+                        send_key_event(display, KEY_CAPSLOCK, X11_KEYBOARD_KEY_STATE_RELEASED);
+                    }
                 }
 
                 bool externalNumLockState = state.locked_mods & Mod2Mask;
@@ -1065,24 +1074,29 @@ void *event_loop_thread(void *arg) {
                 }else{
                     ALOGD("XCB_FOCUS_IN External Num Lock is OFF");
                 }
-                std::scoped_lock num_lock(display->internalNumLockStateMutex);
-                if(display->internalNumLockState != externalNumLockState){
-                    display->internalNumLockState = externalNumLockState;
-                    ALOGD("XCB_FOCUS_IN update display->internalNumLockState: %d", display->internalNumLockState);
-                    send_key_event(display, KEY_NUMLOCK, X11_KEYBOARD_KEY_STATE_PRESSED);
-                    send_key_event(display, KEY_NUMLOCK, X11_KEYBOARD_KEY_STATE_RELEASED);
+                {
+                    std::scoped_lock num_lock(display->internalNumLockStateMutex);
+                    if(display->internalNumLockState != externalNumLockState){
+                        display->internalNumLockState = externalNumLockState;
+                        ALOGD("XCB_FOCUS_IN update display->internalNumLockState: %d", display->internalNumLockState);
+                        send_key_event(display, KEY_NUMLOCK, X11_KEYBOARD_KEY_STATE_PRESSED);
+                        send_key_event(display, KEY_NUMLOCK, X11_KEYBOARD_KEY_STATE_RELEASED);
+                    }
                 }
                 break;
             }
             case XCB_FOCUS_OUT:{
                 xcb_focus_out_event_t *focus_out = (xcb_focus_out_event_t *)event;
                 xcb_window_t focus_out_win = focus_out->event;
-                for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                    if (it->second->xcbwindow == focus_out_win){
-                        ALOGI("Task : %s focus_out", it->first.c_str());
-                        if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
-                            ALOGI("XCB_FOCUS_OUT focus_out_win: %u task %s XAutoRepeatOn", focus_out_win, it->first.c_str());
-                            enable_auto_repeat(display->x11display);
+                {
+                    std::scoped_lock lock(display->windowsMutex);
+                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                        if (it->second->xcbwindow == focus_out_win){
+                            ALOGI("Task : %s focus_out", it->first.c_str());
+                            if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                                ALOGI("XCB_FOCUS_OUT focus_out_win: %u task %s XAutoRepeatOn", focus_out_win, it->first.c_str());
+                                enable_auto_repeat(display->x11display);
+                            }
                         }
                     }
                 }
@@ -1097,30 +1111,38 @@ void *event_loop_thread(void *arg) {
                 xcb_client_message_event_t *cm = (xcb_client_message_event_t *)event;
                 ALOGI("cm->type: %d, cm->data.data32[0]: %d", cm->type, cm->data.data32[0]);
                 xcb_window_t focused_win = cm ->window;
-                std::scoped_lock lock(display->windowsMutex);
-                for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                    ALOGI("Task : %s", it->first.c_str());
-                    if (it->second->xcbwindow == focused_win){
-                        ALOGI("it->second->wm_protocols: %d, it->second->wm_delete_window: %d",
-                            it->second->wm_protocols, it->second->wm_delete_window);
-                        if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
-                            if (display->task != nullptr) {
-                                if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
-                                    ALOGI("remove task %s", it->first.c_str());
-                                    if(isValidInteger(it->first)){
-                                        property_set(("fde_running_task_" + it->first).c_str(), "false");
-                                        display->task->removeTask(stoi(it->first));
+                int taskId = -1;
+                {
+                    std::scoped_lock lock(display->windowsMutex);
+                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                        ALOGI("Task : %s", it->first.c_str());
+                        if (it->second->xcbwindow == focused_win){
+                            ALOGI("it->second->wm_protocols: %d, it->second->wm_delete_window: %d",
+                                it->second->wm_protocols, it->second->wm_delete_window);
+                            if (cm->type == it->second->wm_protocols && cm->data.data32[0] == it->second->wm_delete_window) {
+                                if (display->task != nullptr) {
+                                    if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                        ALOGI("remove task %s", it->first.c_str());
+                                        if(isValidInteger(it->first)){
+                                            property_set(("fde_running_task_" + it->first).c_str(), "false");
+                                            taskId = stoi(it->first);
+                                        }
+                                    }else{
+                                        ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
                                     }
-                                }else{
-                                    ALOGE("Received XCB_CLIENT_MESSAGE, ignoring\n");
-                                }
-                                if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
-                                    ALOGI("XCB_CLIENT_MESSAGE delete window: %u task %s XAutoRepeatOn", focused_win, it->first.c_str());
-                                    enable_auto_repeat(display->x11display);
+                                    if (it->first != "Toast" && it->first.find("Application Not Responding:") ==  std::string::npos && !isStartWithSpecialSymbols(it->first)) {
+                                        ALOGI("XCB_CLIENT_MESSAGE delete window: %u task %s XAutoRepeatOn", focused_win, it->first.c_str());
+                                        enable_auto_repeat(display->x11display);
+                                    }
                                 }
                             }
+                            break;
                         }
                     }
+                }
+                if(taskId != -1){
+                    display->task->removeTask(taskId);
+                    ALOGI("display->task->removeTask: %d", taskId);
                 }
                 break;
             }
@@ -1128,18 +1150,25 @@ void *event_loop_thread(void *arg) {
                     ALOGV("XCB_BUTTON_PRESS received");
                     xcb_button_press_event_t *xcb_button_event = (xcb_button_press_event_t *)event;
                     xcb_window_t focus_window = xcb_button_event->event;
-                    for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
-                        ALOGI("XCB_BUTTON_PRESS Task : %s", it->first.c_str());
-                        if (it->second->xcbwindow == focus_window){
-                            ALOGI("XCB_BUTTON_PRESS Task %s gained focus", it->first.c_str());
-                            if (display->task != nullptr) {
-                                if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
-                                    if(isValidInteger(it->first)){
-                                        display->task->setFocusedTask(stoi(it->first));
+                    int taskId = -1;
+                    {
+                        std::scoped_lock lock(display->windowsMutex);
+                        for (auto it = display->x11_windows->begin(); it != display->x11_windows->end(); it++) {
+                            ALOGI("XCB_BUTTON_PRESS Task : %s", it->first.c_str());
+                            if (it->second->xcbwindow == focus_window){
+                                ALOGI("XCB_BUTTON_PRESS Task %s gained focus", it->first.c_str());
+                                if (display->task != nullptr) {
+                                    if (it->first != "Openfde" && it->first != "none" && it->first != "0") {
+                                        if(isValidInteger(it->first)){
+                                            taskId = stoi(it->first);
+                                        }
                                     }
                                 }
                             }
                         }
+                    }
+                    if(taskId != -1){
+                        display->task->setFocusedTask(taskId);
                     }
                     if (dispatcher.button_press_cb) {
                         dispatcher.button_press_cb(arg, (xcb_button_press_event_t *)event);
