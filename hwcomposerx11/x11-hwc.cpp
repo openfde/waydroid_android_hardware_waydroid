@@ -91,6 +91,10 @@ struct itimerval timer;
 
 static double gesture_scaling_start_distance;
 static int gesture_scaling_stride;
+static double relx = 0;
+static double rely = 0;
+static double prev_relx = 0;
+static double prev_rely = 0;
 
 static int find_argb_visual(struct display *display) ;
 void
@@ -989,9 +993,38 @@ void on_motion_notify(void *data, xcb_motion_notify_event_t *event) {
 
         ADD_EVENT(EV_ABS, ABS_X, x);
         ADD_EVENT(EV_ABS, ABS_Y, y);
-        ADD_EVENT(EV_REL, REL_X, x - display->ptrPrvX);
-        ADD_EVENT(EV_REL, REL_Y, y - display->ptrPrvY);
+        if(x - display->ptrPrvX != 0){
+            relx = x - display->ptrPrvX;
+        }else if(x > 0 && display->full_width - x > 1){
+            relx = 0;
+        }else{
+            if(abs(prev_relx) > 3){
+                relx = prev_relx;
+            }else{
+                relx = prev_relx > 0 ? 3 : -3;
+            }
+        }
+        if(y - display->ptrPrvY != 0){
+            rely = y - display->ptrPrvY;
+        }else if(y > 0 && display->full_height - y > 1){
+            rely = 0;
+        }else{
+            if(abs(prev_rely) > 3){
+                rely = prev_rely;
+            }else{
+                rely = prev_rely > 0 ? 3 : -3;
+            }
+        }
+        ADD_EVENT(EV_REL, REL_X, relx);
+        ADD_EVENT(EV_REL, REL_Y, rely);
         ADD_EVENT(EV_SYN, SYN_REPORT, 0);
+
+        if(relx != 0){
+            prev_relx = relx;
+        }
+        if(rely != 0){
+            prev_rely = rely;
+        }
         display->ptrPrvX = x;
         display->ptrPrvY = y;
         bool near_bord = x <= 10 || y <= 10 || x >= display->width - 10 || y >= display->height - 10;
